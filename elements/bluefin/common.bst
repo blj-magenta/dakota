@@ -4,11 +4,11 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.05-29-gc9db404d523cad9af4aec8509f659fcf1d93422d
+  ref: v2026.05-52-g85ff06674cea90635c445c1921bc3fe88b21617c
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
-  ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
+  ref: 59ca14a42f5a922159895d37935f70e408a42c7d
 
 build-depends:
 - gnome-build-meta.bst:gnomeos-deps/just.bst
