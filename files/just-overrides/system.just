@@ -143,19 +143,19 @@ mount-drive:
     UNIT_NAME="$(systemd-escape --path --suffix=mount "$MOUNTPOINT")"
 
     sudo mkdir -p "$MOUNTPOINT"
-    sudo tee "/etc/systemd/system/${UNIT_NAME}" > /dev/null <<-EOF
-	[Unit]
-	Description=Mount $DEVICE at $MOUNTPOINT
+    sudo tee "/etc/systemd/system/${UNIT_NAME}" > /dev/null <<EOF
+    [Unit]
+    Description=Mount $DEVICE at $MOUNTPOINT
 
-	[Mount]
-	What=$DEVICE
-	Where=$MOUNTPOINT
-	Type=$FSTYPE
-	Options=defaults
+    [Mount]
+    What=$DEVICE
+    Where=$MOUNTPOINT
+    Type=$FSTYPE
+    Options=defaults
 
-	[Install]
-	WantedBy=multi-user.target
-	EOF
+    [Install]
+    WantedBy=multi-user.target
+    EOF
 
     sudo systemctl daemon-reload
     sudo systemctl enable --now "$UNIT_NAME"
