@@ -59,7 +59,7 @@ config:
       # Root cause: dri_gbm.so has no RPATH and relied on the linker
       # cache to find libgallium-26.0.6.so, which was not yet in
       # /etc/ld.so.cache on the deployed system.
-      ldconfig -r /layer
+      ldconfig -r /layer -f /layer/etc/ld.so.conf
 
     - |
       cd "%{install-root}"
