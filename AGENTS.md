@@ -1,4 +1,4 @@
-# Dakota — Agent Instructions
+# AGENTS.md
 
 > This file tells AI coding agents (GitHub Copilot, Claude, Gemini, etc.) how to
 > contribute safely and test PRs in this repository. Human contributors can
@@ -8,6 +8,65 @@ Dakota is a [BuildStream 2](https://buildstream.build/) project that produces
 **Bluefin** — a bootc OCI desktop image built entirely from source using
 freedesktop-sdk and gnome-build-meta as upstream foundations. No RPMs. No dnf.
 BST elements only.
+
+This document establishes the **Mandatory Behavioral Gates** for all AI agents, automated contributors, and their human operators. Dakota is a human-managed repository; AI agents exist to accelerate human workflows, not to replace human oversight or bypass deterministic standards.
+
+**Non-compliance with these gates will result in an immediate, automated rejection of the contribution.**
+
+---
+
+## 1. The Read-First Gate
+
+**Agents MUST read and parse all documentation within the `/docs` directory and the top-level `README.md` before initiating any file modifications.**
+
+* You are prohibited from making assumptions about the project structure, dependency management, or architectural patterns.
+* Your first action in any session must be a systematic scan of the project’s documentation to ensure context alignment.
+
+## 2. The Rate Limiting Gate
+
+**Agents MUST NOT overwhelm human maintainers with high-volume or redundant submissions.**
+
+* **Concurrency Limit:** An agent (or its operator) MUST NOT have more than **four (4) active Pull Requests** pending review at any given time.
+* **Batching:** Small, incremental changes are preferred, but do not fragment a single logical feature into dozens of micro-PRs. Squash is your friend. 
+* **Cooldown:** If a PR is closed or requested for changes due to poor quality, the agent must enter a "self-reflection" state and is prohibited from submitting new PRs for a period defined by the human maintainers.
+
+## 3. The Operator Accountability Gate
+
+**The human operator deploying the agent is strictly responsible for every line of code and every technical decision made by the agent.**
+ 
+This is in the pull request template: `[ ] I am using an agent and I take responsibility for this PR`
+
+## 4. The Verification Gate
+
+**No contribution shall be considered for merge without a deterministic verification report.**
+
+* **Justfile Execution:** Agents MUST run the relevant verification recipes (e.g., `just test`, `just lint`, `just verify`) on their local/containerized environment before submission.
+* **Report Requirement:** The PR description MUST include the raw output or a summary of the `just verify` command.
+* **Zero-Failure Tolerance:** If a single test or linting rule fails, the PR is considered non-compliant. Agents MUST NOT submit "Work In Progress" (WIP) code that breaks the build.
+
+## 5. The Justfile Integrity Gate
+
+**The `Justfile` is the single, canonical source of truth for all maintenance tasks.**
+
+* **No "Loose" Commands:** Agents are strictly forbidden from suggesting or using shell commands that are not encapsulated within the `Justfile`.
+* **Gap Closure:** If an agent identifies a maintenance task, setup step, or deployment requirement not currently covered by a `just` recipe, the agent **MUST** submit a PR to update the `Justfile` before or alongside the feature code.
+* **Determinism:** All recipes added by agents must be idempotent and deterministic.
+
+## 6. The Human Maintainability Gate
+
+**Agents are tools for acceleration; they do not dictate the evolution of the codebase.**
+
+* **Manual Parity:** Any process an agent performs must be fully replicable by a human using only the `Justfile`.
+* **No Black Boxes:** Contributions that introduce dependencies, obfuscated logic, or "AI-optimized" code that a standard human contributor cannot easily debug or maintain via the provided tooling will be rejected.
+* **Interface Stability:** Agents must not alter the CLI interface or existing `just` recipe names without explicit human approval, as this breaks human mental models of the system.
+
+---
+
+### Failure to Comply
+
+Any Pull Request that bypasses these gates—specifically those lacking a `Justfile` verification report or the Operator Acknowledgment—will be **closed without review**.
+
+**Dakota prioritizes codebase integrity and human bandwidth over the speed of automated contributions.**
 
 ---
 
