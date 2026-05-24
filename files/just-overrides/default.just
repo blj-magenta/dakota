@@ -209,6 +209,7 @@ report:
 
     TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     HOST_ID=$(head -c 8 /etc/machine-id 2>/dev/null || echo "unknown")
+    ARCH=$(uname -m)
 
     {
     cat <<SUMMARY
@@ -218,7 +219,7 @@ Anonymous device ID: ${HOST_ID} (truncated)
 
 ### System
 * Kernel: ${KERNEL_VER}
-* Architecture: $(uname -m)
+* Architecture: ${ARCH}
 * Load average (1/5/15 min): ${LOAD_AVG}
 * Memory: ${MEM_INFO}
 
