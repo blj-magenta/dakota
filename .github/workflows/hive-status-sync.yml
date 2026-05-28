@@ -1,0 +1,170 @@
+name: Hive Status Sync
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Fetch Hive snapshot and post project status
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: |
+          python3 << 'PYEOF'
+          import re, json, subprocess, urllib.request, sys
+          from datetime import datetime, timezone
+
+          SNAPSHOT_URL = "https://raw.githubusercontent.com/kubestellar/docs/main/public/live/hive/bluefin/index.html"
+          PROJECT_ID   = "PVT_kwDOCCE0ds4BZAIm"
+          DASHBOARD_URL = "https://kubestellar.io/live/hive/bluefin/"
+
+          # Fetch snapshot
+          req = urllib.request.Request(SNAPSHOT_URL, headers={"User-Agent": "hive-status-sync/1.0"})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              html = r.read().decode("utf-8", errors="replace")
+
+          # Extract embedded agents JSON
+          m = re.search(r'"agents":\s*(\[.*?\])\s*,\s*"(?:governor|repos|token)', html, re.DOTALL)
+          if not m:
+              print("ERROR: could not find agents JSON in snapshot", file=sys.stderr)
+              sys.exit(1)
+
+          agents = json.loads(m.group(1))
+
+          # Summarize agent states
+          active = [a for a in agents if a.get("state") == "running"]
+          working = [a for a in active if a.get("busy") == "working"]
+          idle = [a for a in active if a.get("busy") != "working"]
+          stopped = [a for a in agents if a.get("state") != "running"]
+
+          total = len(agents)
+          n_active = len(active)
+
+          # Determine color
+          if n_active >= 3:
+              color = "GREEN"
+          elif n_active >= 1:
+              color = "YELLOW"
+          else:
+              color = "RED"
+
+          # Clean liveSummary (strip box-drawing, compress blank lines)
+          def clean_summary(text):
+              if not text:
+                  return ""
+              # Strip box-drawing characters and border lines
+              cleaned = re.sub(r'[┃│╔╗╚╝╠╣═─┌┐└┘├┤┬┴┼|]', '', text)
+              # Strip trailing /data/agents/... lines
+              cleaned = re.sub(r'/data/agents/\S+', '', cleaned)
+              # Strip prompt artifacts
+              cleaned = re.sub(r'─+\s*\n\s*❯\s*\n\s*─+', '', cleaned)
+              # Strip version lines
+              cleaned = re.sub(r'v[\d.]+ available.*', '', cleaned)
+              # Collapse multiple blank lines
+              cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+              # Strip leading/trailing whitespace per line
+              lines = [l.rstrip() for l in cleaned.splitlines()]
+              # Remove lines that are just whitespace or single chars
+              lines = [l for l in lines if len(l.strip()) > 2]
+              return '\n'.join(lines).strip()
+
+          # Get supervisor summary (most informative)
+          supervisor = next((a for a in agents if a.get("role") == "supervisor"), None)
+          summary_text = ""
+          if supervisor:
+              summary_text = clean_summary(supervisor.get("liveSummary", ""))
+
+          # Build agent roster table
+          roster_rows = []
+          for a in sorted(agents, key=lambda x: x.get("sortOrder", 99)):
+              emoji = a.get("emoji", "")
+              name = a.get("displayName", a.get("name", ""))
+              state = a.get("state", "unknown")
+              busy = a.get("busy", "")
+              model = a.get("model", "")
+              last_kick = a.get("lastKick", "")
+              next_kick = a.get("nextKick", "")
+              cadence = a.get("cadence", "")
+
+              if state == "running" and busy == "working":
+                  status_icon = "🟢 working"
+              elif state == "running":
+                  status_icon = "🟡 idle"
+              else:
+                  status_icon = "🔴 stopped"
+
+              roster_rows.append(f"| {emoji} {name} | {status_icon} | {model} | {last_kick} | next: {next_kick} |")
+
+          roster_table = "\n".join([
+              "| Agent | Status | Model | Last Active | Next |",
+              "|---|---|---|---|---|",
+          ] + roster_rows)
+
+          # Timestamp
+          now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+          # Build status body
+          header = f"**{n_active}/{total} agents active**"
+          if working:
+              working_names = " · ".join(
+                  f"{a.get('emoji','')} {a.get('name','')}" for a in working
+              )
+              header += f" — {working_names} working"
+
+          body_parts = [header, ""]
+
+          if summary_text:
+              body_parts += ["### What the team is working on", "", summary_text, ""]
+
+          body_parts += ["### Agent roster", "", roster_table, ""]
+          body_parts += [f"_Updated {now_utc} · [Live dashboard]({DASHBOARD_URL})_"]
+
+          body = "\n".join(body_parts)
+
+          print(f"Status color: {color}")
+          print(f"Body preview ({len(body)} chars):")
+          print(body[:500])
+          print("...")
+
+          # Post to GitHub Project status update
+          mutation = """
+          mutation($projectId: ID!, $body: String!, $color: ProjectV2StatusUpdateColor!) {
+            createProjectV2StatusUpdate(input: {
+              projectId: $projectId
+              body: $body
+              color: $color
+            }) {
+              statusUpdate {
+                id
+                createdAt
+              }
+            }
+          }
+          """
+
+          result = subprocess.run(
+              ["gh", "api", "graphql",
+               "-f", f"query={mutation}",
+               "-f", f"projectId={PROJECT_ID}",
+               "-f", f"body={body}",
+               "-f", f"color={color}"],
+              capture_output=True, text=True
+          )
+
+          if result.returncode != 0 or '"errors"' in result.stdout:
+              print("ERROR posting status update:", file=sys.stderr)
+              print(result.stdout, file=sys.stderr)
+              print(result.stderr, file=sys.stderr)
+              sys.exit(1)
+
+          resp = json.loads(result.stdout)
+          update_id = resp["data"]["createProjectV2StatusUpdate"]["statusUpdate"]["id"]
+          print(f"Posted status update: {update_id}")
+          PYEOF
+        shell: bash
