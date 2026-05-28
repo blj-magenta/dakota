@@ -9,6 +9,11 @@ Dakota is a [BuildStream 2](https://buildstream.build/) project that produces
 freedesktop-sdk and gnome-build-meta as upstream foundations. No RPMs. No dnf.
 BST elements only.
 
+Dakota's primary design goal is a **built-in quality feedback loop** where users,
+contributors, agents, and hardware all produce structured evidence that flows
+back into the next iteration. See [docs/feedback-loop.md](docs/feedback-loop.md)
+for the full architecture.
+
 This document establishes the **Mandatory Behavioral Gates** for all AI agents, automated contributors, and their human operators. Dakota is a human-managed repository; AI agents exist to accelerate human workflows, not to replace human oversight or bypass deterministic standards.
 
 **Non-compliance with these gates will result in an immediate, automated rejection of the contribution.**

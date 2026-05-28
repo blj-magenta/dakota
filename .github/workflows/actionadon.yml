@@ -27,6 +27,7 @@ permissions:
 
 env:
   WORKFLOW_NAME: "Raptor Current"
+  DONATION_WORKFLOW_MARKER: "Workflow: Agent Donation"
   # Maintainers are implicit wranglers via their repo permissions.
   # This list is for additional low-barrier operators who can steer the queue.
   # Keep this list in sync with AGENTS.md and files/hive/hive-project.yaml.example.
@@ -62,6 +63,10 @@ jobs:
           label "agent/blocked" "e74c3c" "Blocked and needs human input before work can continue."
           label "needs-human/agent-ready" "a467dc" "Structured issue is ready for a human or agent to claim."
           label "needs-human/agent-oops" "f795fe" "Agent mistake or bad automation outcome; Hive must not touch."
+          label "kind:agent-donation" "1b7f83" "Donate agent time for a repo, issue, or PR review/report request."
+          label "flow/project-report" "0e8a16" "Agent flow: produce a sourced project report."
+          label "flow/issue-review" "5319e7" "Agent flow: review a linked issue and produce a sourced report."
+          label "flow/pr-review" "fbca04" "Agent flow: review a linked pull request and produce a sourced report."
           label "hold" "8b949e" "Do not touch; intentionally held by humans."
           label "do-not-merge" "b60205" "Do not merge or automate this item."
 
@@ -71,27 +76,56 @@ jobs:
     needs: ensure-labels
     runs-on: ubuntu-24.04
     steps:
-      - name: Detect Raptor Current opt-in
+      - name: Detect issue workflow
         id: workflow
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
           WORKFLOW_NAME: ${{ env.WORKFLOW_NAME }}
+          DONATION_WORKFLOW_MARKER: ${{ env.DONATION_WORKFLOW_MARKER }}
         run: |
-          if printf '%s\n' "$ISSUE_BODY" | grep -Fq "$WORKFLOW_NAME"; then
-            echo "opted_in=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "opted_in=false" >> "$GITHUB_OUTPUT"
+          WORKFLOW="none"
+          if printf '%s\n' "$ISSUE_BODY" | grep -Fq "$DONATION_WORKFLOW_MARKER"; then
+            WORKFLOW="agent_donation"
+          elif printf '%s\n' "$ISSUE_BODY" | grep -Fq "$WORKFLOW_NAME"; then
+            WORKFLOW="raptor_current"
           fi
+          echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
+
+      - name: Detect donation flow
+        if: steps.workflow.outputs.workflow == 'agent_donation'
+        id: donation
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          FLOW_LABEL="flow/project-report"
+          if printf '%s\n' "$ISSUE_BODY" | grep -Eq 'https://[^[:space:])>]+/pull/[0-9]+'; then
+            FLOW_LABEL="flow/pr-review"
+          elif printf '%s\n' "$ISSUE_BODY" | grep -Eq 'https://[^[:space:])>]+/issues/[0-9]+'; then
+            FLOW_LABEL="flow/issue-review"
+          fi
+          echo "flow_label=$FLOW_LABEL" >> "$GITHUB_OUTPUT"
 
       - name: Label as discussing
-        if: steps.workflow.outputs.opted_in == 'true'
+        if: steps.workflow.outputs.workflow == 'raptor_current'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: gh issue edit "$ISSUE_URL" --add-label "status/discussing"
 
+      - name: Fast-track donated agent work
+        if: steps.workflow.outputs.workflow == 'agent_donation'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          FLOW_LABEL: ${{ steps.donation.outputs.flow_label }}
+        run: |
+          gh issue edit "$ISSUE_URL" \
+            --add-label "needs-human/agent-ready" \
+            --add-label "kind:agent-donation" \
+            --add-label "$FLOW_LABEL"
+
       - name: Welcome comment
-        if: steps.workflow.outputs.opted_in == 'true'
+        if: steps.workflow.outputs.workflow == 'raptor_current'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
@@ -102,9 +136,12 @@ jobs:
 
           You opted into **${WORKFLOW_NAME}**.
 
-          **Community:** discuss below. Does this fit Bluefin's direction? A 👍 goes a long way.
+          **Community:** discuss below. Does this fit Bluefin's direction? A 👍 goes a long way. If you hit the same bug, run:
+          \`\`\`bash
+          ujust confirm $(echo "$ISSUE_URL" | grep -oP '\d+$')
+          \`\`\`
 
-          **Maintainers and wranglers:** when this issue is ready for the structured path, add `status/approved` and fill in the acceptance criteria. That spec is what a contributor or agent will build against.
+          **Maintainers and wranglers:** when this issue is ready for the structured path, add \`status/approved\` and fill in the acceptance criteria. That spec is what a contributor or agent will build against.
           EOF
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
@@ -124,6 +161,8 @@ jobs:
           ✅ Approved. The community has found its way here.
 
           Before this goes to the build queue it needs **acceptance criteria** — the spec a contributor or agent will implement against. Add it to the issue body, then apply `needs-human/agent-ready` to open it up.
+
+          **Wranglers:** write acceptance criteria, then comment `/ready`.
           EOF
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
@@ -132,13 +171,45 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
-          REPO: ${{ github.repository }}
+          DONATION_WORKFLOW_MARKER: ${{ env.DONATION_WORKFLOW_MARKER }}
         run: |
-          cat << 'EOF' > /tmp/comment.md
+          BODY=$(gh issue view "$ISSUE_URL" --json body --jq '.body // ""')
+          if printf '%s\n' "$BODY" | grep -Fq "$DONATION_WORKFLOW_MARKER"; then
+            cat << 'EOF' > /tmp/comment.md
+          🐝 In the queue! Hive now has the instructions it needs for this donated agent request.
+
+          **Agent workflow:**
+          ```bash
+          just validate                    # check element graph
+          just build default               # build the image
+          just lint                        # bootc container lint
+          just boot-test                   # confirm desktop boots
+          ```
+          The issue body defines the flow: project report, issue review, or PR review. Post a sourced report comment when done, then close this issue.
+          EOF
+          else
+            cat << 'EOF' > /tmp/comment.md
           🐟 In the queue! This issue has a spec and is ready to build.
 
-          Comment `/claim` to take it. Wranglers can use `/ready` to move a spec-complete issue into the queue. Read [AGENTS.md](../../blob/main/AGENTS.md) first — it covers branching from `upstream/main`, running `just validate`, and the PR checklist.
+          **Contributors:** comment `/claim` to take it, then:
+          ```bash
+          git checkout upstream/main -b fix/this-issue
+          # make your changes
+          just validate                    # check element graph
+          just build default               # build the image
+          just boot-test                   # automated smoke test (exits 0/1)
+          just lint                        # bootc container lint
+          ```
+          Open a PR with `Closes #NNN` when ready.
+
+          **Reviewers:** after the PR merges and ships in nightly:
+          ```bash
+          ujust verify <issue-number>      # confirm the fix on your machine
+          ```
+
+          Read [AGENTS.md](../../blob/main/AGENTS.md) for the full workflow.
           EOF
+          fi
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
   # ── /claim, /unclaim, and /ready ──────────────────────────────────────────
@@ -197,9 +268,26 @@ jobs:
           fi
 
           gh issue edit "$ISSUE_URL" --add-label "agent/claimed" --add-assignee "$COMMENTER"
-          cat << EOF > /tmp/comment.md
-          🎣 @${COMMENTER} has this one! Open a PR with \`Closes #${ISSUE_NUMBER}\` in the description when ready. Hit a blocker? Add \`agent/blocked\` and describe what you need.
+          if echo "$LABELS" | grep -q "kind:agent-donation"; then
+            cat << EOF > /tmp/comment.md
+          🎣 @${COMMENTER} has this one! Follow the workflow embedded in the issue, post a sourced report comment when you're done, and close this issue so Hive can move on.
           EOF
+          else
+            cat << EOF > /tmp/comment.md
+          🎣 @${COMMENTER} has this one!
+
+          **Your workflow:**
+          \`\`\`bash
+          git checkout upstream/main -b fix/issue-${ISSUE_NUMBER}
+          # implement the acceptance criteria
+          just validate                    # fast graph check
+          just build default               # build the image (~1hr first time)
+          just boot-test                   # confirm desktop boots (exits 0/1)
+          just lint                        # bootc container lint
+          \`\`\`
+          Open a PR with \`Closes #${ISSUE_NUMBER}\` in the description when ready. Hit a blocker? Add \`agent/blocked\` and describe what you need.
+          EOF
+          fi
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
       - name: Handle /ready
@@ -305,7 +393,7 @@ jobs:
             gh issue edit "$ISSUE_URL" --remove-assignee "$ASSIGNEE"
           fi
           cat << 'EOF' > /tmp/comment.md
-          Back in the queue. Anyone can `/claim` it.
+          Back in the queue. Comment `/claim` to pick it up. Start with `just validate` to confirm the graph is sound.
           EOF
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
@@ -338,11 +426,15 @@ jobs:
                 cat << EOF > /tmp/comment.md
           This issue has been claimed for 7 days with no PR activity, so it's back in the queue.
 
-          @${ASSIGNEE} — if you're still working on it, just \`/claim\` again and it's yours.
+          @${ASSIGNEE} — if you're still working on it, just \`/claim\` again and it's yours. Otherwise anyone can pick it up:
+          \`\`\`bash
+          git checkout upstream/main -b fix/issue-${NUMBER}
+          just validate && just build default && just boot-test && just lint
+          \`\`\`
           EOF
               else
                 cat << 'EOF' > /tmp/comment.md
-          This issue has been claimed for 7 days with no PR activity, so it's back in the queue.
+          This issue has been claimed for 7 days with no PR activity, so it's back in the queue. Comment `/claim` to take it.
           EOF
               fi
               gh issue comment "$NUMBER" --repo "$REPO" --body-file /tmp/comment.md

@@ -15,6 +15,7 @@
 ## Status
 
 - Alpha, public testing and [filing issues is appreciated](https://github.com/projectbluefin/dakota/issues)!
+- Built-in feedback loop: users report → contributors fix → community verifies → [read the design](docs/feedback-loop.md)
 
 ## ISO Download
 
