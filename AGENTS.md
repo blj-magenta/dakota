@@ -311,6 +311,7 @@ If you're running [Hive](https://github.com/kubestellar/hive) against this repo,
 | `kind:improvement` | Enhancement or cleanup — no spec required for small items. |
 | `kind:tech-debt` | Cleanup with no user-visible change. |
 | `kind:github-action` | CI or automation changes. |
+| `lab:pass` | Maintainer lab validation passed; enables label-gated auto-merge for maintainer-owned PR branches. After `lab:pass`, one maintainer ack/approval is sufficient for merge-queue entry. |
 | `needs-human/agent-oops` | An agent made a mistake here — wrong assumption, bad output, filed a spurious issue, broke something. This label builds a learning corpus. |
 
 ### `needs-human/agent-ready` - how to use it
