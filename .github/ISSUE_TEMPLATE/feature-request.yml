@@ -1,50 +1,55 @@
 name: "Feature request"
-description: "Propose something new — shape what Dakota becomes."
-title: "[Feature]: "
-labels: ["kind/enhancement"]
+description: "Propose something new. Specific proposals ship. Vague ones wait."
+labels: ["type/feature", "status/discussing"]
 type: "Feature"
 body:
   - type: markdown
     attributes:
       value: |
-        You're not filing a ticket — you're shaping the future.
+        ## Humans decide what gets built. Bots build it.
 
-        Keep it short and practical. If you opt into **Raptor Current**, it enters the structured queue where agents and contributors can pick it up.
+        This is not a ticket system — it is a conversation between you and the people building Dakota. A maintainer will read this, decide if it fits the project's direction, and write acceptance criteria. Once that is done, a contributor or agent can pick it up and ship it.
+
+        **The bottleneck is almost never implementation. It is clarity.**
+
+        Agents can implement well-scoped work fast — sometimes the same day. But they can only act on what is clearly defined. An unclear feature request goes to **Speccing** and waits for a human to define it. Your two paragraphs below determine whether this ships this week or sits in the backlog.
+
+        **Ask yourself before submitting:**
+        - Can someone read this and know exactly what file to change?
+        - Does "done" have a clear finish line — a command to run, a thing to see?
+        - Is this specific to Dakota, or would it be better filed upstream (GNOME, fdsdk, bootc)?
 
   - type: checkboxes
     id: checks
     attributes:
       label: "Before submitting"
       options:
-        - label: "I searched existing issues first"
+        - label: "I searched existing issues and this has not been proposed before"
           required: true
-
-  - type: dropdown
-    id: workflow-path
-    attributes:
-      label: "Workflow path"
-      description: "Use the direct path by default. Pick Raptor Current only if you want the structured queue."
-      options:
-        - "Direct issue (skip workflow)"
-        - "Raptor Current (structured + wrangler + agent queue)"
-    validations:
-      required: true
+        - label: "This is specific to Dakota (not a GNOME, Flatpak, or upstream issue)"
+          required: false
 
   - type: textarea
     id: problem
     attributes:
-      label: "What problem are you solving?"
-      description: "One paragraph. Plain language. What's broken, missing, or annoying today?"
-      placeholder: "I keep having to manually push my local build to the zot registry because there's no just recipe for it..."
+      label: "What is the problem today?"
+      description: "Plain language. What is missing, broken, or annoying? Be specific — name the command, the file, the workflow step."
+      placeholder: |
+        There is no `just push-local` recipe. Every time I build a local image and want to test it
+        on the lab machine, I have to hand-type `podman push localhost:5000/...` with the full tag.
+        This is error-prone and not documented anywhere.
     validations:
       required: true
 
   - type: textarea
     id: solution
     attributes:
-      label: "What do you propose?"
-      description: "How should it work? What would done look like?"
-      placeholder: "Add a `just push-local` recipe that wraps `podman push` with the lab registry URL pre-filled."
+      label: "What does done look like?"
+      description: "Describe the end state. What command do you run? What do you see? What file changes? A concrete finish line is what allows this to be implemented."
+      placeholder: |
+        `just push-local` pushes the most recently exported image to the local zot registry at
+        the address from Justfile variables. Running it should print the pushed digest and exit 0.
+        No new dependencies — just a recipe wrapping the existing `podman push` call.
     validations:
       required: true
 
@@ -52,27 +57,28 @@ body:
     id: area
     attributes:
       label: "Affected area"
-      description: "Pick the closest match."
+      description: "Where does this change live? Helps route it to the right epic and the right contributor."
       options:
-        - "buildstream"
-        - "gnome / desktop"
-        - "brew / CLI"
-        - "just recipes"
-        - "services / systemd"
+        - "just recipes / ujust"
+        - "GNOME / desktop"
+        - "bootc / image updates"
+        - "install / ISO"
         - "nvidia"
-        - "hardware"
-        - "testing / QA"
-        - "upstream / junctions"
+        - "flatpak / apps"
+        - "brew / CLI tools"
+        - "build system / BST"
+        - "CI / automation"
+        - "hardware / drivers"
         - "other"
     validations:
-      required: false
+      required: true
 
   - type: textarea
-    id: affected-elements
+    id: extra
     attributes:
       label: "Extra context"
-      description: "Optional. Related issues, upstream references, or affected files."
-      placeholder: "Justfile only — no BST element changes"
+      description: "Optional — related issues, upstream references, or files you think are affected. The more you add here, the less back-and-forth before this reaches Ready."
+      placeholder: "Justfile only — no BST element changes needed. Related: issue #513."
     validations:
       required: false
 
@@ -80,4 +86,6 @@ body:
     attributes:
       value: |
         ---
-        After this ships, the community verifies it works with `ujust verify <issue-number>` — your feature, confirmed by the fleet.
+        A maintainer will add acceptance criteria before this enters the work queue. The clearer your proposal, the less back-and-forth before that happens — and the faster someone can ship it.
+
+        Once it ships, the community verifies it with `ujust verify <issue-number>`. Your feature, confirmed on real hardware.
