@@ -132,6 +132,12 @@ jobs:
           print(body[:500])
           print("...")
 
+          # Guard: skip posting if PROJECT_TOKEN is not configured
+          import os
+          if not os.environ.get("GH_TOKEN"):
+              print("WARNING: PROJECT_TOKEN secret is not set — skipping project status post", file=sys.stderr)
+              sys.exit(0)
+
           # Post to GitHub Project status update
           mutation = """
           mutation($projectId: ID!, $body: String!, $color: ProjectV2StatusUpdateColor!) {
