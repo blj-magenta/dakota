@@ -416,7 +416,6 @@ jobs:
             --json number,url,updatedAt,assignees \
             --jq ".[] | select(.updatedAt < \"$CUTOFF\") | .number" \
           | while read -r NUMBER; do
-              URL="https://github.com/${REPO}/issues/${NUMBER}"
               ASSIGNEE=$(gh issue view "$NUMBER" --repo "$REPO" \
                 --json assignees --jq '.assignees[0].login // ""')
 
