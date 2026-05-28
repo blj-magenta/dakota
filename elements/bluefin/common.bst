@@ -34,7 +34,7 @@ config:
     #   - install -Dm644 -t "%{install-root}%{sysconfdir}/" etc/*
     #   - install -Dm644 -t "%{install-root}%{sysconfdir}/" etc/*
   - |
-    sed -i "s|file:///usr/share/backgrounds/bluefin/12-bluefin.xml|file:///var/lib/bluefin/backgrounds/current-bluefin.xml|g" "system_files/bluefin/usr/share/glib-2.0/schemas/zz0-bluefin-modifications.gschema.override"
+    sed -i "s#file:///usr/share/backgrounds/bluefin/12-bluefin.xml#file:///var/lib/ublue-os/current-bluefin.xml#g" "system_files/bluefin/usr/share/glib-2.0/schemas/zz0-bluefin-modifications.gschema.override"
 
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
