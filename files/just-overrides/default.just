@@ -352,6 +352,8 @@ report:
         exit 0
     fi
 
+    ISSUE_URL_BASE="https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml"
+
     if ! gh auth status --active &>/dev/null; then
         echo ""
         gum style --foreground 214 --bold --margin "0 2" \
@@ -367,6 +369,7 @@ report:
         else
             gum style --foreground 245 --margin "0 4" "(clipboard not available — open the file below)"
         fi
+        gum style --foreground 245 --margin "0 4" "Open: $ISSUE_URL_BASE"
         echo ""
         gum style --margin "0 2" "Option 2 — sign in to gh and upload:"
         gum style --foreground 245 --margin "0 4" "gh auth login"
