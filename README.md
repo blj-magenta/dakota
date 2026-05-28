@@ -86,6 +86,24 @@ You need [podman](https://podman.io/docs/installation), [just](https://just.syst
 
 **(WIP)** `just preflight` -- a preflight check that validates your setup and auto-installs missing tools (like QEMU) via [Homebrew](https://brew.sh), reducing hard prerequisites to just `podman` and `just`.
 
+## Agent-driven Dakota
+
+Dakota is set up so **anyone can build it from a fresh clone** using the
+repository `Justfile` and the repo-local agent instructions.
+
+1. Run `just --list`
+2. Read `AGENTS.md`
+3. Load the skill that matches your task from `.github/skills/`
+
+| If you are doing... | Read this |
+|---|---|
+| Build / validate / boot loops | `.github/skills/dakota-build/SKILL.md` |
+| Issue triage, donated-agent reports, PR reviews | `.github/skills/dakota-agent-workflow/SKILL.md` |
+| CI, issue templates, or action routing | `.github/skills/dakota-ci/SKILL.md` |
+
+Humans can follow the same instructions directly; the skills just package the
+workflow in the standard `.github/skills/` layout.
+
 ## How It Works
 
 [BuildStream](https://buildstream.build/) resolves a dependency graph rooted at `elements/oci/bluefin.bst`, pulls pre-built artifacts from GNOME's public cache, builds anything that's missing, and produces a bootable OCI container image. The image is installed to a virtual disk and booted in QEMU.
@@ -109,6 +127,14 @@ just build                     # Build the OCI image (~1 hour first time, minute
 just generate-bootable-image   # Create a bootable disk from the image
 just boot-vm                   # Launch QEMU VM -- a GNOME desktop appears
 ```
+
+### Verify it works
+
+```bash
+just boot-test                 # Automated: boots VM, checks GDM starts, exits 0/1
+```
+
+No human interaction needed — boots an ephemeral VM, verifies the desktop target is healthy, tears it down. Requires `bcvk`, `qemu-kvm`, and `virtiofsd`.
 
 ### Iterative Development
 
@@ -165,6 +191,7 @@ Packages from the upstream [freedesktop-sdk](https://gitlab.com/freedesktop-sdk/
 ## Project Structure
 
 ```
+.github/skills/      Repo-local agent skills and workflow docs
 elements/
   bluefin/           Bluefin-specific packages (edit these)
     deps.bst         Master package list (start here)
@@ -179,4 +206,3 @@ Justfile             All build commands
 ```
 
 ![Dakorator](https://github.com/user-attachments/assets/ee92291d-a617-496e-abb6-9045a4c665ce)
-

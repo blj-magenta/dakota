@@ -663,6 +663,91 @@ boot-fast: _ensure-bcvk
         --vcpus "{{vm_cpus}}" \
         "localhost/{{image_name}}:{{image_tag}}"
 
+# Automated boot smoke test — boots the image, verifies GDM starts, exits 0/1.
+# Non-interactive. Intended for CI and agent verification loops.
+# Requires: bcvk, qemu-kvm, virtiofsd
+[group('test')]
+boot-test: _ensure-bcvk
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    VM_NAME="dakota-boot-test-$$"
+    TIMEOUT="${BOOT_TEST_TIMEOUT:-120}"
+    STATUS=1
+
+    # Use sudo unless already root
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    if ! $SUDO_CMD podman image exists "{{image_name}}:{{image_tag}}"; then
+        echo "ERROR: Image '{{image_name}}:{{image_tag}}' not found in podman." >&2
+        echo "Run 'just build' first to build and export the OCI image." >&2
+        exit 1
+    fi
+
+    cleanup() {
+        echo "==> Tearing down VM ${VM_NAME}..."
+        $SUDO_CMD bcvk ephemeral rm -f "$VM_NAME" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    echo "==> boot-test: launching ephemeral VM (timeout: ${TIMEOUT}s)..."
+    $SUDO_CMD bcvk ephemeral run -d --rm -K \
+        --memory "{{vm_ram}}M" \
+        --vcpus "{{vm_cpus}}" \
+        --name "$VM_NAME" \
+        "localhost/{{image_name}}:{{image_tag}}"
+
+    # Wait for SSH to become available
+    echo "==> Waiting for SSH..."
+    ELAPSED=0
+    while [ $ELAPSED -lt "$TIMEOUT" ]; do
+        if $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- true 2>/dev/null; then
+            break
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+    done
+
+    if [ $ELAPSED -ge "$TIMEOUT" ]; then
+        echo "FAIL: SSH did not become available within ${TIMEOUT}s" >&2
+        exit 1
+    fi
+    echo "==> SSH up after ~${ELAPSED}s"
+
+    # Check services
+    echo "==> Checking critical services..."
+    CHECKS=(
+        "graphical.target:systemctl is-active graphical.target"
+        "gdm:systemctl is-active gdm"
+        "bootc:bootc status"
+    )
+
+    PASS=0
+    FAIL=0
+    for check in "${CHECKS[@]}"; do
+        NAME="${check%%:*}"
+        CMD="${check#*:}"
+        if $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- $CMD &>/dev/null; then
+            echo "  ✓ ${NAME}"
+            PASS=$((PASS + 1))
+        else
+            echo "  ✗ ${NAME}" >&2
+            FAIL=$((FAIL + 1))
+        fi
+    done
+
+    echo ""
+    if [ $FAIL -eq 0 ]; then
+        echo "PASS: all ${PASS} checks passed"
+        STATUS=0
+    else
+        echo "FAIL: ${FAIL} check(s) failed" >&2
+    fi
+    exit $STATUS
+
 # Inspect the built bootc image.
 [group('info')]
 inspect: _ensure-bcvk

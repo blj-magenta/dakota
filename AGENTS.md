@@ -17,10 +17,11 @@ This document establishes the **Mandatory Behavioral Gates** for all AI agents, 
 
 ## 1. The Read-First Gate
 
-**Agents MUST read the top-level `README.md` and `.github/copilot-instructions.md` before initiating any file modifications.**
+**Agents MUST read the top-level `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, and the relevant repo-local skill in `.github/skills/` before initiating any file modifications.**
 
 * You are prohibited from making assumptions about the project structure, dependency management, or architectural patterns.
 * Your first action in any session must be a systematic scan of the project's documentation to ensure context alignment.
+* Dakota keeps its agent instructions in-repo. Do not rely on operator-local `~/src/skills/*` paths for Dakota-specific guidance.
 
 ## 2. The Rate Limiting Gate
 
@@ -40,7 +41,7 @@ This is in the pull request template: `[ ] I am using an agent and I take respon
 
 **No contribution shall be considered for merge without a deterministic verification report.**
 
-* **Justfile Execution:** Agents MUST run `just lint` and `just boot-fast` (or `just boot-vm`) on their local environment before submission. These are the canonical local verification targets.
+* **Justfile Execution:** Agents MUST run `just lint` and `just boot-test` (or `just boot-fast` / `just boot-vm`) on their local environment before submission. These are the canonical local verification targets. Prefer `just boot-test` for automated pass/fail verification; use `just boot-fast` for interactive debugging.
 * **Report Requirement:** The PR description MUST include confirmation that `just lint` passed and the image booted successfully.
 * **Zero-Failure Tolerance:** If lint fails or the image does not boot, the PR is considered non-compliant. Agents MUST NOT submit "Work In Progress" (WIP) code that breaks the build.
 * **Note:** `just verify` checks cosign/SBOM/SLSA signatures on published GHCR images — it requires a pushed image and is not part of the local contributor verification loop.
@@ -50,7 +51,6 @@ This is in the pull request template: `[ ] I am using an agent and I take respon
 **The `Justfile` is the single, canonical source of truth for all maintenance tasks.**
 
 * **No "Loose" Commands:** Agents are strictly forbidden from suggesting or using shell commands that are not encapsulated within the `Justfile`.
-* **Current exception:** Until `just validate` is added (tracked in issue #506), element graph validation is run as: `BST_FLAGS="-o x86_64_v3 true --no-interactive" just bst show --deps all oci/bluefin.bst`. This is the only permitted loose command and only until the recipe exists.
 * **Gap Closure:** If an agent identifies a maintenance task, setup step, or deployment requirement not currently covered by a `just` recipe, the agent **MUST** submit a PR to update the `Justfile` before or alongside the feature code.
 * **Determinism:** All recipes added by agents must be idempotent and deterministic.
 
@@ -98,6 +98,7 @@ Any Pull Request that bypasses these gates-specifically those lacking a `Justfil
 | `patches/gnome-build-meta/` | Patches applied to GBM via `patch_queue` |
 | `patches/linux/` | Kernel patches (via fdsdk linux element) |
 | `files/` | Static files installed by elements |
+| `.github/skills/` | Repo-local agent skills for builds, reviews, and CI workflow work |
 | `.github/workflows/build.yml` | CI: `validate` on PRs, full `build` on merge queue |
 | `Justfile` | All local dev commands - run `just --list` first |
 
@@ -159,7 +160,18 @@ Runs `bootc container lint` on the built image. Must pass before any PR is ready
 
 ### 4. Boot and verify
 
-**Fast path - ephemeral VM, no disk image (preferred for quick checks):**
+**Automated smoke test (preferred for agents and CI):**
+
+```bash
+just boot-test
+```
+
+Boots the image in an ephemeral VM, waits for SSH, checks that `graphical.target`,
+`gdm`, and `bootc status` are healthy, then tears down the VM. Returns exit 0 on
+success, exit 1 on failure. Set `BOOT_TEST_TIMEOUT=180` to extend the default 120s
+timeout for slow machines.
+
+**Interactive path - ephemeral VM, no disk image:**
 
 ```bash
 just boot-fast
@@ -194,7 +206,7 @@ systemctl is-active gdm        # desktop session healthy
 
 - [ ] Validate passes: `BST_FLAGS="-o x86_64_v3 true --no-interactive" just bst show --deps all oci/bluefin.bst`
 - [ ] `just lint` passes on a built image
-- [ ] `just boot-fast` or `just boot-vm` - desktop comes up, no regressions
+- [ ] `just boot-test` passes (automated) or `just boot-fast` / `just boot-vm` - desktop comes up, no regressions
 - [ ] Commit has exactly one `Assisted-by:` or `Signed-off-by:` trailer - no `Co-authored-by:`
 - [ ] PR body references the issue it closes (`Closes #NNN`)
 
@@ -236,6 +248,11 @@ pre-approved once `validate` passes. See issue #501 for the auto-merge roadmap.
 Dakota uses a structured issue lifecycle so that the community shapes what gets built and agents build exactly what was agreed on — no more, no less.
 
 This workflow is **opt-in** in the issue form. Issues only enter it automatically when the author selects **Raptor Current**. Otherwise they stay ordinary issues unless a maintainer or wrangler chooses to route them into the workflow later with `status/approved` plus `/ready`.
+
+There is also a fast lane for donated agent time: the **Help this project** issue form. That form takes a target URL and routes the issue straight into Hive with one of these flows:
+- `flow/project-report` — scanner writes a sourced project report
+- `flow/issue-review` — scanner reviews a linked issue and recommends next steps
+- `flow/pr-review` — reviewer audits a linked PR; Dakota PR reviews that depend on local proof use `just validate`, `just build default`, `just lint`, and `just boot-fast` or `just generate-bootable-image && just boot-vm`
 
 ```
 New issue
@@ -289,7 +306,7 @@ Initial wranglers:
 
 ### Hive integration
 
-If you're running [Hive](https://github.com/kubestellar/hive) against this repo, copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and load the agent policy files from `files/hive/agent-policies/` as your per-agent CLAUDE.md overrides. Hive's scanner will pick up `needs-human/agent-ready` issues and claim them via the `/claim` protocol above.
+If you're running [Hive](https://github.com/kubestellar/hive) against this repo, copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and load the agent policy files from `files/hive/agent-policies/` as your per-agent CLAUDE.md overrides. The repo-local skill folder at `.github/skills/` is the human-readable companion to those Hive policies: use `dakota-build` for local validation, `dakota-agent-workflow` for issue/PR/report flows, and `dakota-ci` for routing changes. Hive will route donated-agent issues by flow: scanner handles project reports and issue reviews, reviewer handles PR reviews, and architect handles larger Dakota structural work. All of them claim `needs-human/agent-ready` issues via the `/claim` protocol above.
 
 ---
 ## Label protocol
@@ -311,6 +328,10 @@ If you're running [Hive](https://github.com/kubestellar/hive) against this repo,
 | `kind:improvement` | Enhancement or cleanup — no spec required for small items. |
 | `kind:tech-debt` | Cleanup with no user-visible change. |
 | `kind:github-action` | CI or automation changes. |
+| `kind:agent-donation` | A donated-agent request to investigate a repo, issue, or PR and return a report instead of code. |
+| `flow/project-report` | Scanner flow for a linked repository, org, roadmap, or docs report. |
+| `flow/issue-review` | Scanner flow for a linked issue review. |
+| `flow/pr-review` | Reviewer flow for a linked PR review. |
 | `lab:pass` | Maintainer lab validation passed; enables label-gated auto-merge for maintainer-owned PR branches. After `lab:pass`, one maintainer ack/approval is sufficient for merge-queue entry. |
 | `needs-human/agent-oops` | An agent made a mistake here — wrong assumption, bad output, filed a spurious issue, broke something. This label builds a learning corpus. |
 
@@ -322,6 +343,8 @@ When you see this label on an issue:
 3. Make the change, validate, build, boot, lint
 4. Open a PR with `Closes #NNN` in the body
 5. CI `validate` must pass
+
+If the issue also carries `kind:agent-donation`, follow the flow embedded in the issue body instead of opening a PR: write the report comment, cite sources, and close the issue when done.
 
 ### Hive exempt labels
 
