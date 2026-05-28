@@ -14,7 +14,6 @@ menuoptions-setting=2
 menuicon-setting='ublue-logo-symbolic'
 menulocation-setting=1
 menuposition-setting=0
-command-order=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 command1=('---$(hostname)', '', '', true)
 command2=('About', 'gnome-control-center system about', '', true)
 command3=('System Monitor', '/usr/bin/flatpak run io.missioncenter.MissionCenter', '', true)
