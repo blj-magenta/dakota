@@ -146,128 +146,166 @@ report:
     }
     trap cleanup EXIT
 
-    # ── Pre-OTel: collect command-based data ─────────────────────────────────
+    # ── Header ───────────────────────────────────────────────────────────────
+    echo ""
+    gum style \
+        --border rounded --border-foreground 99 \
+        --padding "1 3" --margin "0 1" \
+        --bold --foreground 212 \
+        "🦖 Dakotaraptor Field Report"
+    echo ""
+    gum style --foreground 245 --margin "0 2" \
+        "Everything collected stays on your machine until you say so."
+    gum style --foreground 245 --margin "0 2" \
+        "You review it all before anything leaves. Your gist. Your data."
+    echo ""
 
-    echo "Collecting system information..."
+    # ── Collect quick data ────────────────────────────────────────────────────
+    # bootc status needs sudo — prompt before so it doesn't look stuck
+    gum style --foreground 214 --margin "0 2" \
+        "→ Reading your booted image (you may be prompted for your password):"
+    echo ""
 
     BOOTC_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
-    BOOTED_IMAGE=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.image.image // "unknown"')
-    BOOTED_DIGEST=$(echo "$BOOTC_JSON" | jq -r '.status.booted.imageDigest // "unknown"')
-    STAGED_IMAGE=$(echo "$BOOTC_JSON" | jq -r '.status.staged.image.image.image // "none"')
 
-    GNOME_VERSION=$(gnome-shell --version 2>/dev/null || echo "unknown")
-    GNOME_EXTENSIONS=$(gnome-extensions list --enabled 2>/dev/null || echo "")
+    COLLECTION_OUT="$(mktemp)"
+    gum spin --spinner dot --title " Scanning your system..." -- bash -c "
+        BOOTED_IMAGE=\$(printf '%s' '$BOOTC_JSON' | jq -r '.status.booted.image.image.image // \"unknown\"' 2>/dev/null || echo unknown)
+        BOOTED_DIGEST=\$(printf '%s' '$BOOTC_JSON' | jq -r '.status.booted.imageDigest // \"unknown\"' 2>/dev/null || echo unknown)
+        STAGED_IMAGE=\$(printf '%s' '$BOOTC_JSON' | jq -r '.status.staged.image.image.image // \"none\"' 2>/dev/null || echo none)
+        GNOME_VERSION=\$(gnome-shell --version 2>/dev/null || echo unknown)
+        GNOME_EXTENSIONS=\$(gnome-extensions list --enabled 2>/dev/null || echo '')
+        FLATPAK_LIST=\$(flatpak list --columns=application,version 2>/dev/null || echo unavailable)
+        LOAD_AVG=\$(awk '{print \$1\", \"\$2\", \"\$3}' /proc/loadavg)
+        MEM_INFO=\$(free -h --si | awk '/^Mem:/{print \$3\" used / \"\$2\" total\"}')
+        FAILED_UNITS=\$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print \$1}' | head -20 || echo '')
+        KERNEL_VER=\$(uname -r)
+        ARCH=\$(uname -m)
+        FLATPAK_LIST=\$(printf '%s' \"\$FLATPAK_LIST\" | sed -E 's|/home/[^/[:space:]]+/|/home/<redacted>/|g')
+        GNOME_EXTENSIONS=\$(printf '%s' \"\$GNOME_EXTENSIONS\" | sed -E 's|/home/[^/[:space:]]+/|/home/<redacted>/|g')
+        printf 'BOOTED_IMAGE=%q\n'    \"\$BOOTED_IMAGE\"    > '$COLLECTION_OUT'
+        printf 'BOOTED_DIGEST=%q\n'   \"\$BOOTED_DIGEST\"   >> '$COLLECTION_OUT'
+        printf 'STAGED_IMAGE=%q\n'    \"\$STAGED_IMAGE\"    >> '$COLLECTION_OUT'
+        printf 'GNOME_VERSION=%q\n'   \"\$GNOME_VERSION\"   >> '$COLLECTION_OUT'
+        printf 'KERNEL_VER=%q\n'      \"\$KERNEL_VER\"      >> '$COLLECTION_OUT'
+        printf 'ARCH=%q\n'            \"\$ARCH\"             >> '$COLLECTION_OUT'
+        printf 'LOAD_AVG=%q\n'        \"\$LOAD_AVG\"         >> '$COLLECTION_OUT'
+        printf 'MEM_INFO=%q\n'        \"\$MEM_INFO\"         >> '$COLLECTION_OUT'
+        printf 'FLATPAK_LIST=%q\n'    \"\$FLATPAK_LIST\"    >> '$COLLECTION_OUT'
+        printf 'GNOME_EXTENSIONS=%q\n' \"\$GNOME_EXTENSIONS\" >> '$COLLECTION_OUT'
+        printf 'FAILED_UNITS=%q\n'    \"\$FAILED_UNITS\"    >> '$COLLECTION_OUT'
+    "
+    # shellcheck disable=SC1090
+    source "$COLLECTION_OUT"
+    rm -f "$COLLECTION_OUT"
 
-    FLATPAK_LIST=$(flatpak list --columns=application,version 2>/dev/null || echo "unavailable")
+    # ── OTel phase: opt-in deep metrics ──────────────────────────────────────
+    echo ""
+    gum style --foreground 245 --margin "0 2" \
+        "Deep metrics capture 35 seconds of hardware telemetry and journal logs."
+    gum style --foreground 245 --margin "0 2" \
+        "Useful when a bug is hard to reproduce. Skip it for quick reports."
+    echo ""
 
-    LOAD_AVG=$(awk '{print $1", "$2", "$3}' /proc/loadavg)
-    MEM_INFO=$(free -h --si | awk '/^Mem:/{print $3" used / "$2" total"}')
-    FAILED_UNITS=$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
-                   | awk '{print $1}' | head -20 || echo "")
-    KERNEL_VER=$(uname -r)
-
-    # Scrub /home/<user>/ paths from collected strings
-    FLATPAK_LIST=$(echo "$FLATPAK_LIST" | sed -E 's|/home/[^/[:space:]]+/|/home/<redacted>/|g')
-    GNOME_EXTENSIONS=$(echo "$GNOME_EXTENSIONS" | sed -E 's|/home/[^/[:space:]]+/|/home/<redacted>/|g')
-
-    # ── OTel phase: collect system information donation (opt-in) ─────────────────
-
-    SKIP_OTEL=1
-    if gum confirm "Collect detailed system metrics? (adds ~35s, useful for deep debugging)" --default=false; then
-        SKIP_OTEL=0
-    fi
-
-    if [[ "$SKIP_OTEL" -eq 0 ]]; then
-        echo "Collecting system information donation (35 seconds)..."
-
+    HAS_OTEL=0
+    if gum confirm " Include deep hardware metrics? (~35 seconds)" --default=false; then
+        HAS_OTEL=1
         OTEL_CONFIG="$(mktemp /tmp/ujust-report-otel-XXXXXX.yaml)"
         sed "s|/output/|${REPORT_DIR}/|g" \
             /usr/share/ublue-os/just/otel/ujust-report-config.yaml > "$OTEL_CONFIG"
 
-    OTELCOL_BINARY=""
-    for candidate in \
-        "$HOME/.local/bin/otelcol-contrib" \
-        "/usr/local/bin/otelcol-contrib" \
-        "$(command -v otelcol-contrib 2>/dev/null || true)"; do
-        if [[ -n "$candidate" && -x "$candidate" ]]; then
-            OTELCOL_BINARY="$candidate"
-            break
-        fi
-    done
+        OTELCOL_BINARY=""
+        for candidate in \
+            "$HOME/.local/bin/otelcol-contrib" \
+            "/usr/local/bin/otelcol-contrib" \
+            "$(command -v otelcol-contrib 2>/dev/null || true)"; do
+            if [[ -n "$candidate" && -x "$candidate" ]]; then
+                OTELCOL_BINARY="$candidate"
+                break
+            fi
+        done
 
-    if [[ -n "$OTELCOL_BINARY" ]]; then
-        timeout 35 "$OTELCOL_BINARY" --config "$OTEL_CONFIG" 2>/dev/null || true
-    elif command -v podman &>/dev/null; then
-        timeout 45 podman run --rm --privileged \
-            --network=host \
-            -v /proc:/proc:ro \
-            -v /sys:/sys:ro \
-            -v /var/log/journal:/var/log/journal:ro \
-            -v /run/log/journal:/run/log/journal:ro \
-            -v "${OTEL_CONFIG}:/etc/otelcol/config.yaml:ro" \
-            -v "${REPORT_DIR}:/output" \
-            docker.io/otel/opentelemetry-collector-contrib@sha256:a2a52e43c1a80aa94120ad78c2db68780eb90e6d11c8db5b3ce2f6a0cc6b5029 \
-            2>/dev/null || true
-    else
-        echo "Warning: otelcol-contrib not found and podman unavailable."
-        echo "         System information donation omitted from report."
+        if [[ -n "$OTELCOL_BINARY" ]]; then
+            gum spin --spinner globe \
+                --title " Listening to your hardware — every signal helps the pack track this down..." \
+                -- timeout 35 "$OTELCOL_BINARY" --config "$OTEL_CONFIG" 2>/dev/null || true
+        elif command -v podman &>/dev/null; then
+            gum spin --spinner globe \
+                --title " Pulling in the collector — listening to your hardware for 35 seconds..." \
+                -- timeout 45 podman run --rm --privileged \
+                    --network=host \
+                    -v /proc:/proc:ro \
+                    -v /sys:/sys:ro \
+                    -v /var/log/journal:/var/log/journal:ro \
+                    -v /run/log/journal:/run/log/journal:ro \
+                    -v "${OTEL_CONFIG}:/etc/otelcol/config.yaml:ro" \
+                    -v "${REPORT_DIR}:/output" \
+                    docker.io/otel/opentelemetry-collector-contrib@sha256:a2a52e43c1a80aa94120ad78c2db68780eb90e6d11c8db5b3ce2f6a0cc6b5029 \
+                    2>/dev/null || true
+        else
+            gum style --foreground 214 --margin "0 2" \
+                "⚠  otelcol-contrib not found — deep metrics skipped."
+            HAS_OTEL=0
+        fi
+
+        if [[ $HAS_OTEL -eq 1 ]] && [[ -f "$REPORT_DIR/report.otlp.json" ]]; then
+            gum style --foreground 82 --margin "0 2" "✓ Hardware metrics captured."
+        else
+            HAS_OTEL=0
+        fi
     fi
-    fi  # end SKIP_OTEL
 
     # ── Build summary.md ─────────────────────────────────────────────────────
-
     TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    # Derive a stable anonymous ID via keyed hash — do not expose machine-id directly.
-    # systemd treats /etc/machine-id as confidential; truncating it is not sufficient.
     if [[ -r /etc/machine-id ]]; then
         HOST_ID=$(printf 'ujust-report:%s' "$(cat /etc/machine-id)" | sha256sum | cut -c1-8)
     else
         HOST_ID="unknown"
     fi
-    ARCH=$(uname -m)
 
     {
-    printf '## Bluefin/Dakota Diagnostic Report\n'
-    printf 'Generated: %s\n' "${TIMESTAMP}"
-    printf 'Anonymous device ID: %s (truncated)\n' "${HOST_ID}"
-    printf '\n### System\n'
-    printf '* Kernel: %s\n' "${KERNEL_VER}"
-    printf '* Architecture: %s\n' "${ARCH}"
-    printf '* Load avg 1m/5m/15m: %s\n' "${LOAD_AVG}"
-    printf '* Memory: %s\n' "${MEM_INFO}"
-    printf '\n### Booted Image\n'
-    printf '* Image: %s\n' "${BOOTED_IMAGE}"
-    printf '* Digest: %s\n' "${BOOTED_DIGEST}"
-    printf '* Staged: %s\n' "${STAGED_IMAGE}"
-    printf '\n### GNOME\n'
-    printf '* Version: %s\n' "${GNOME_VERSION}"
-    printf '* Active extensions:\n'
-    if [[ -n "$GNOME_EXTENSIONS" ]]; then
-        echo "$GNOME_EXTENSIONS" | sed 's/^/  - /'
-    else
-        printf '  (none)\n'
+    printf '## Bluefin / Dakota Diagnostic Report\n\n'
+    printf 'Generated: %s  \n' "${TIMESTAMP}"
+    printf 'Device ID: `%s` (anonymised — derived from machine-id, not reversible)  \n\n' "${HOST_ID}"
+    printf '### System\n\n'
+    printf '| Field | Value |\n|-------|-------|\n'
+    printf '| Kernel | `%s` |\n' "${KERNEL_VER}"
+    printf '| Architecture | `%s` |\n' "${ARCH}"
+    printf '| Load (1m / 5m / 15m) | %s |\n' "${LOAD_AVG}"
+    printf '| Memory | %s |\n' "${MEM_INFO}"
+    printf '\n### Booted Image\n\n'
+    printf '| Field | Value |\n|-------|-------|\n'
+    printf '| Image | `%s` |\n' "${BOOTED_IMAGE}"
+    printf '| Digest | `%s` |\n' "${BOOTED_DIGEST}"
+    printf '| Staged | `%s` |\n' "${STAGED_IMAGE}"
+    printf '\n### GNOME\n\n'
+    printf '| Field | Value |\n|-------|-------|\n'
+    printf '| Version | %s |\n' "${GNOME_VERSION}"
+    if [[ -n "${GNOME_EXTENSIONS}" ]]; then
+        printf '\n**Active extensions:**\n\n'
+        printf '%s\n' "${GNOME_EXTENSIONS}" | sed 's/^/- /'
     fi
-    printf '\n### Failed Systemd Units\n'
-    if [[ -n "$FAILED_UNITS" ]]; then
-        echo "$FAILED_UNITS" | sed 's/^/  - /'
+    printf '\n### Failed Systemd Units\n\n'
+    if [[ -n "${FAILED_UNITS}" ]]; then
+        printf '%s\n' "${FAILED_UNITS}" | sed 's/^/- /'
     else
-        printf '  None\n'
+        printf '_None_ ✓\n'
     fi
-    printf '\n### Installed Flatpaks\n'
-    printf '\`\`\`\n'
+    printf '\n### Installed Flatpaks\n\n```\n'
     printf '%s\n' "${FLATPAK_LIST}"
-    printf '\`\`\`\n'
-    printf '\n### Full System Information Donation\n'
-    printf 'See report.otlp.json in this gist for the full system information donation (structured metrics and journal logs).\n'
+    printf '```\n'
+    if [[ $HAS_OTEL -eq 1 ]]; then
+        printf '\n### Deep Hardware Metrics\n\n'
+        printf 'See `report.otlp.json` in this gist — structured metrics and journal logs (35-second sample).\n'
+    fi
     } > "$REPORT_DIR/summary.md"
 
     # ── Review ────────────────────────────────────────────────────────────────
-
     echo ""
-    echo "📊 Review what will be donated before uploading:"
+    gum style --foreground 99 --bold --margin "0 2" \
+        "Review everything before it leaves your machine:"
     echo ""
 
-    # Render summary in a forced pager — user must scroll through and press q
     if [[ -t 0 && -t 1 ]]; then
         if command -v glow &>/dev/null; then
             glow "$REPORT_DIR/summary.md" | gum pager
@@ -275,56 +313,52 @@ report:
             gum pager < "$REPORT_DIR/summary.md"
         fi
     else
-        if command -v glow &>/dev/null; then
-            glow "$REPORT_DIR/summary.md"
-        else
-            cat "$REPORT_DIR/summary.md"
-        fi
+        command -v glow &>/dev/null && glow "$REPORT_DIR/summary.md" || cat "$REPORT_DIR/summary.md"
     fi
 
-    # Show file paths and sizes so user knows exactly what leaves their machine
     echo ""
-    echo "📁 Files that will be uploaded to YOUR gist (you can delete them anytime):"
+    gum style --foreground 245 --margin "0 2" "What will be uploaded to YOUR gist:"
     echo ""
-    ls -lh "$REPORT_DIR/"summary.md 2>/dev/null | awk '{print "   " $NF " (" $5 ") — human-readable summary"}'
+    SIZE_SUMMARY=$(ls -lh "$REPORT_DIR/summary.md" 2>/dev/null | awk '{print $5}')
+    gum style --margin "0 4" "  summary.md  (${SIZE_SUMMARY})  — everything you just reviewed"
     if [[ -f "$REPORT_DIR/report.otlp.json" ]]; then
-        ls -lh "$REPORT_DIR/report.otlp.json" | awk '{print "   " $NF " (" $5 ") — structured system metrics + journal logs"}'
+        SIZE_OTEL=$(ls -lh "$REPORT_DIR/report.otlp.json" 2>/dev/null | awk '{print $5}')
+        gum style --margin "0 4" "  report.otlp.json  (${SIZE_OTEL})  — structured hardware metrics + journal slice"
     fi
     echo ""
-    echo "   Inspect anytime: cat $REPORT_DIR/summary.md"
+    gum style --foreground 245 --margin "0 2" \
+        "The gist is in your namespace. You can edit or delete it any time."
     echo ""
 
-    # ── Upload ────────────────────────────────────────────────────────────────
-
-    if ! gum confirm "Donate this system information report to your GitHub gist?"; then
-        echo "Donation cancelled. Files saved locally:"
-        echo "  $REPORT_DIR/"
+    # ── Upload or fallback ────────────────────────────────────────────────────
+    if ! gum confirm " Donate this report to your GitHub gist?"; then
+        echo ""
+        gum style --foreground 245 --margin "0 2" "Cancelled. Files kept at: $REPORT_DIR/"
         trap - EXIT
         exit 0
     fi
 
     if ! gh auth status --active &>/dev/null; then
         echo ""
-        echo "gh is not authenticated — no problem! Here are your options:"
+        gum style --foreground 214 --bold --margin "0 2" \
+            "gh is not signed in — no problem, here are your options:"
         echo ""
-        echo "Option 1: Copy to clipboard and paste into a GitHub issue:"
+        gum style --margin "0 2" "Option 1 — copy to clipboard and paste into an issue:"
         if command -v wl-copy &>/dev/null; then
             wl-copy < "$REPORT_DIR/summary.md"
-            echo "  ✅ Report copied to clipboard! Paste it into your issue."
+            gum style --foreground 82 --margin "0 4" "✓ Copied to clipboard. Paste it into your issue."
         elif command -v xclip &>/dev/null; then
             xclip -selection clipboard < "$REPORT_DIR/summary.md"
-            echo "  ✅ Report copied to clipboard! Paste it into your issue."
+            gum style --foreground 82 --margin "0 4" "✓ Copied to clipboard. Paste it into your issue."
         else
-            echo "  (clipboard not available — see file below)"
+            gum style --foreground 245 --margin "0 4" "(clipboard not available — open the file below)"
         fi
         echo ""
-        echo "Option 2: Authenticate gh and upload as gist:"
-        echo "  gh auth login"
-        echo "  gh gist create --public --desc 'Bluefin diagnostic report' \\"
-        echo "    $REPORT_DIR/summary.md"
+        gum style --margin "0 2" "Option 2 — sign in to gh and upload:"
+        gum style --foreground 245 --margin "0 4" "gh auth login"
+        gum style --foreground 245 --margin "0 4" "gh gist create --public --desc 'Bluefin diagnostic report' $REPORT_DIR/summary.md"
         echo ""
-        echo "Your files are saved locally:"
-        echo "  $REPORT_DIR/"
+        gum style --foreground 245 --margin "0 2" "Your files are at: $REPORT_DIR/"
         trap - EXIT
         exit 0
     fi
@@ -332,31 +366,49 @@ report:
     GIST_FILES=("$REPORT_DIR/summary.md")
     [[ -f "$REPORT_DIR/report.otlp.json" ]] && GIST_FILES+=("$REPORT_DIR/report.otlp.json")
 
+    # write upload command to script so gum spin can run it cleanly
+    UPLOAD_SCRIPT="$(mktemp)"
+    GIST_OUT="$(mktemp)"
+    printf '#!/usr/bin/bash\ngh gist create --public --desc "Bluefin diagnostic report %s"' "$(date -I)" > "$UPLOAD_SCRIPT"
+    for f in "${GIST_FILES[@]}"; do
+        printf ' "%s"' "$f" >> "$UPLOAD_SCRIPT"
+    done
+    printf ' > "%s"\n' "$GIST_OUT" >> "$UPLOAD_SCRIPT"
+    chmod +x "$UPLOAD_SCRIPT"
+
     trap - EXIT
-    if ! GIST_URL=$(gh gist create --public \
-        --desc "Bluefin system information donation $(date -I)" \
-        "${GIST_FILES[@]}"); then
+    if ! gum spin --spinner pulse \
+        --title " Sending your field notes to the pack..." \
+        -- bash "$UPLOAD_SCRIPT"; then
         echo ""
-        echo "Upload failed. Your files are kept locally:"
-        echo "  $REPORT_DIR/"
+        gum style --foreground 196 --margin "0 2" "Upload failed. Files kept at: $REPORT_DIR/"
+        rm -f "$UPLOAD_SCRIPT" "$GIST_OUT"
         exit 1
     fi
+    GIST_URL=$(cat "$GIST_OUT")
+    rm -f "$UPLOAD_SCRIPT" "$GIST_OUT"
     cleanup
 
     echo ""
-    echo "✅ Donated: $GIST_URL"
+    gum style \
+        --border rounded --border-foreground 82 \
+        --padding "1 3" --margin "0 1" \
+        --bold --foreground 82 \
+        "✓ Donated — thank you for helping the pack."
     echo ""
-    echo "Your gist is in your own namespace — you can edit or delete it anytime:"
-    echo "  $GIST_URL"
+    gum style --margin "0 2" "$GIST_URL"
     echo ""
 
-    # Offer to open the bug report form in browser with gist pre-filled
-    ISSUE_URL="https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml&report-link=$(printf '%s' "$GIST_URL" | sed 's|:|%3A|g; s|/|%2F|g')"
-    if gum confirm "Open a new issue in your browser with the gist attached?"; then
-        xdg-open "$ISSUE_URL" 2>/dev/null || echo "  Could not open browser. Visit: $ISSUE_URL"
+    # Offer to open issue form with gist pre-filled
+    ENCODED_URL=$(printf '%s' "$GIST_URL" | sed 's|:|%3A|g; s|/|%2F|g')
+    ISSUE_URL="https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml&report-link=${ENCODED_URL}"
+    if gum confirm " Open a new issue in your browser with this report attached?"; then
+        xdg-open "$ISSUE_URL" 2>/dev/null || gum style --foreground 245 --margin "0 2" "Visit: $ISSUE_URL"
     else
-        echo "To file an issue later:"
-        echo "  xdg-open '$ISSUE_URL'"
+        echo ""
+        gum style --foreground 245 --margin "0 2" "To file an issue later:"
+        gum style --foreground 245 --margin "0 4" "ujust file-issue"
+        gum style --foreground 245 --margin "0 2" "Gist link to paste in: $GIST_URL"
     fi
 
 # Deprecated alias for ujust report.
