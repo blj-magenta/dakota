@@ -132,19 +132,31 @@ jobs:
           n_p0 = count_label("P0")
 
           # Fireteam — unique contributors from merged PRs (last 50), excluding bots
+          # Ghost contributors (agent-assisted) detected via checked PR template checkbox
           BOT_SUFFIXES = ("[bot]", "-bot", "copilot", "renovate", "dependabot")
           fireteam_raw = gh_json("pr", "list", "--repo", REPO, "--state", "merged",
-                                 "--limit", "50", "--json", "author")
-          fireteam = []
-          seen = set()
+                                 "--limit", "50", "--json", "author,body")
+          ghosts = set()   # agent-assisted contributors
+          humans = set()   # direct contributors
           if fireteam_raw:
               for pr in fireteam_raw:
                   login = (pr.get("author") or {}).get("login", "")
-                  if login and login not in seen:
-                      low = login.lower()
-                      if not any(low.endswith(s) or s in low for s in BOT_SUFFIXES):
-                          seen.add(login)
-                          fireteam.append(login)
+                  if not login:
+                      continue
+                  low = login.lower()
+                  if any(low.endswith(s) or s in low for s in BOT_SUFFIXES):
+                      continue
+                  body = pr.get("body") or ""
+                  if "[x] I am using an agent" in body or "[X] I am using an agent" in body:
+                      ghosts.add(login)
+                  else:
+                      humans.add(login)
+          # Someone who has both an agent and a non-agent PR stays in ghosts
+          humans -= ghosts
+          fireteam_names = (
+              [f"👻 {u}" for u in sorted(ghosts)] +
+              [u for u in sorted(humans)]
+          )
 
           # Agent roster table
           # Status uses shape + color so colorblind readers can distinguish by symbol alone:
@@ -198,8 +210,10 @@ jobs:
 
           body_parts += ["### Agent roster", "", roster_table, ""]
 
-          if fireteam:
-              fireteam_line = "**The Fireteam:** " + " · ".join(fireteam)
+          if fireteam_names:
+              fireteam_line = "**The Fireteam:** " + " · ".join(fireteam_names)
+              if ghosts:
+                  fireteam_line += "  _(👻 agent-assisted)_"
               body_parts += ["", fireteam_line]
 
           body_parts += [
