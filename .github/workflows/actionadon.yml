@@ -1,21 +1,12 @@
 name: actionadon
 
-# actionadon — Dakota's community next-action bot.
-# Posts one short comment each time an issue moves to a new lifecycle stage.
-# Handles /claim, /unclaim, and /ready. Sweeps stale claimed issues daily.
-#
-# Lifecycle:
-#   opened → status/discussing
-#   status/approved (maintainer) → needs spec comment
-#   queue/agent-ready (maintainer) → queue announcement
-#   /claim comment → queue/claimed + assigned
-#   /ready comment (wrangler) → queued for agents
-#   /unclaim comment → back in queue
-#   daily sweep → unclaim issues idle > 7 days
+# actionadon — lifecycle bot for Dakota issues.
+# Pipeline: filed → approved → queued → claimed → done
+# Commands: /claim  /unclaim  /ready  /approve (/lgtm alias)
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened, labeled, closed]
   issue_comment:
     types: [created]
   schedule:
@@ -26,16 +17,9 @@ permissions:
   contents: read
 
 env:
-  WORKFLOW_NAME: "Raptor Current"
   DONATION_WORKFLOW_MARKER: "Workflow: Agent Donation"
-  # Maintainers are implicit wranglers via their repo permissions.
-  # This list is for additional low-barrier operators who can steer the queue.
-  # Keep this list in sync with AGENTS.md and files/hive/hive-project.yaml.example.
-  WRANGLERS: "castrojo,ahmedadan,alatiera,hanthor,coxde,renner0e"
 
 jobs:
-  # ── Ensure lifecycle labels exist ─────────────────────────────────────────
-  # Idempotent. Runs before any job that writes labels.
   ensure-labels:
     if: >-
       github.event_name == 'issues' ||
@@ -44,7 +28,9 @@ jobs:
        github.event.issue.pull_request == null &&
        (startsWith(github.event.comment.body, '/claim') ||
         startsWith(github.event.comment.body, '/unclaim') ||
-        startsWith(github.event.comment.body, '/ready')))
+        startsWith(github.event.comment.body, '/ready') ||
+        startsWith(github.event.comment.body, '/approve') ||
+        startsWith(github.event.comment.body, '/lgtm')))
     runs-on: ubuntu-24.04
     steps:
       - name: Create lifecycle labels
@@ -57,12 +43,14 @@ jobs:
               || gh label edit "$1" --color "$2" --description "$3" --repo "$REPO" 2>/dev/null \
               || true
           }
+          label "needs-triage" "d4c5f9" "Needs human review — set kind, priority, and area."
           label "status/discussing" "7c83fd" "Structured issue flow in progress; not ready for the agent queue yet."
-          label "status/approved" "2ea44f" "Approved for queue preparation; add acceptance criteria before /ready."
-          label "queue/claimed" "e8b86d" "Actively being worked by a human or agent."
-          label "agent/blocked" "e74c3c" "Blocked and needs human input before work can continue."
-          label "queue/agent-ready" "a467dc" "Structured issue is ready for a human or agent to claim."
-          label "needs-human/agent-oops" "f795fe" "Agent mistake or bad automation outcome; Hive must not touch."
+          label "status/approved" "2ea44f" "Approved for the build queue — add acceptance criteria then /ready."
+          label "queue/agent-ready" "a467dc" "Has a spec, ready to claim — comment /claim."
+          label "queue/claimed" "e8b86d" "In active work — comment /unclaim to return."
+          label "lgtm" "0e8a16" "Maintainer approved — ready to merge."
+          label "agent/blocked" "e74c3c" "Blocked — needs human input before work can continue."
+          label "needs-human/agent-oops" "f795fe" "Agent error — do not touch; humans only."
           label "kind:agent-donation" "1b7f83" "Donate agent time for a repo, issue, or PR review/report request."
           label "flow/project-report" "0e8a16" "Agent flow: produce a sourced project report."
           label "flow/issue-review" "5319e7" "Agent flow: review a linked issue and produce a sourced report."
@@ -70,321 +58,326 @@ jobs:
           label "hold" "8b949e" "Do not touch; intentionally held by humans."
           label "do-not-merge" "b60205" "Do not merge or automate this item."
 
-  # ── New issue opened ───────────────────────────────────────────────────────
   on-issue-opened:
     if: github.event_name == 'issues' && github.event.action == 'opened'
     needs: ensure-labels
     runs-on: ubuntu-24.04
     steps:
-      - name: Detect issue workflow
-        id: workflow
-        env:
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          WORKFLOW_NAME: ${{ env.WORKFLOW_NAME }}
-          DONATION_WORKFLOW_MARKER: ${{ env.DONATION_WORKFLOW_MARKER }}
-        run: |
-          WORKFLOW="none"
-          if printf '%s\n' "$ISSUE_BODY" | grep -Fq "$DONATION_WORKFLOW_MARKER"; then
-            WORKFLOW="agent_donation"
-          elif printf '%s\n' "$ISSUE_BODY" | grep -Fq "$WORKFLOW_NAME"; then
-            WORKFLOW="raptor_current"
-          fi
-          echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
-
       - name: Detect donation flow
-        if: steps.workflow.outputs.workflow == 'agent_donation'
         id: donation
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
+          DONATION_WORKFLOW_MARKER: ${{ env.DONATION_WORKFLOW_MARKER }}
         run: |
-          FLOW_LABEL="flow/project-report"
-          if printf '%s\n' "$ISSUE_BODY" | grep -Eq 'https://[^[:space:])>]+/pull/[0-9]+'; then
-            FLOW_LABEL="flow/pr-review"
-          elif printf '%s\n' "$ISSUE_BODY" | grep -Eq 'https://[^[:space:])>]+/issues/[0-9]+'; then
-            FLOW_LABEL="flow/issue-review"
+          WORKFLOW="standard"
+          FLOW_LABEL=""
+          if printf '%s\n' "$ISSUE_BODY" | grep -Fq "$DONATION_WORKFLOW_MARKER"; then
+            WORKFLOW="agent_donation"
+            FLOW_LABEL="flow/project-report"
+            if printf '%s\n' "$ISSUE_BODY" | grep -Eq 'https://[^[:space:])>]+/pull/[0-9]+'; then
+              FLOW_LABEL="flow/pr-review"
+            elif printf '%s\n' "$ISSUE_BODY" | grep -Eq 'https://[^[:space:])>]+/issues/[0-9]+'; then
+              FLOW_LABEL="flow/issue-review"
+            fi
           fi
+          echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
           echo "flow_label=$FLOW_LABEL" >> "$GITHUB_OUTPUT"
 
-      - name: Label as discussing
-        if: steps.workflow.outputs.workflow == 'raptor_current'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
-        run: gh issue edit "$ISSUE_URL" --add-label "status/discussing"
-
       - name: Fast-track donated agent work
-        if: steps.workflow.outputs.workflow == 'agent_donation'
+        if: steps.donation.outputs.workflow == 'agent_donation'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           FLOW_LABEL: ${{ steps.donation.outputs.flow_label }}
         run: |
           gh issue edit "$ISSUE_URL" \
+            --add-label "status/approved" \
             --add-label "queue/agent-ready" \
             --add-label "kind:agent-donation" \
             --add-label "$FLOW_LABEL"
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────▶────────·────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Comment `/claim` to take this.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-      - name: Welcome comment
-        if: steps.workflow.outputs.workflow == 'raptor_current'
+      - name: Mark issue for triage
+        if: steps.donation.outputs.workflow != 'agent_donation'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
-          WORKFLOW_NAME: ${{ env.WORKFLOW_NAME }}
+        run: gh issue edit "$ISSUE_URL" --add-label "needs-triage"
+
+      - name: Post filed pipeline
+        if: steps.donation.outputs.workflow != 'agent_donation'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
-          cat << EOF > /tmp/comment.md
-          👋 A new chapter begins — thanks for bringing this to Dakota!
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '▶────────·────────·────────·────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'A maintainer will triage and set priority. To confirm you hit the same bug on your hardware: `ujust confirm ISSUE_NUMBER`')
+          BODY=${BODY/ISSUE_NUMBER/$ISSUE_NUMBER}
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-          You opted into **${WORKFLOW_NAME}**.
-
-          **Community:** discuss below. Does this fit Bluefin's direction? A 👍 goes a long way. If you hit the same bug, run:
-          \`\`\`bash
-          ujust confirm $(echo "$ISSUE_URL" | grep -oP '\d+$')
-          \`\`\`
-
-          **Maintainers and wranglers:** when this issue is ready for the structured path, add \`status/approved\` and fill in the acceptance criteria. That spec is what a contributor or agent will build against.
-          EOF
-          gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
-
-  # ── Label transitions ──────────────────────────────────────────────────────
   on-labeled:
     if: github.event_name == 'issues' && github.event.action == 'labeled'
     needs: ensure-labels
     runs-on: ubuntu-24.04
     steps:
-      - name: Comment on status/approved
+      - name: Post approved pipeline
         if: github.event.label.name == 'status/approved'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
-          cat << 'EOF' > /tmp/comment.md
-          ✅ Approved. The community has found its way here.
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────▶────────·────────·────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Wranglers: write acceptance criteria then comment `/ready`.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-          Before this goes to the build queue it needs **acceptance criteria** — the spec a contributor or agent will implement against. Add it to the issue body, then apply `queue/agent-ready` to open it up.
-
-          **Wranglers:** write acceptance criteria, then comment `/ready`.
-          EOF
-          gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
-
-      - name: Comment on queue/agent-ready
+      - name: Post queued pipeline
         if: github.event.label.name == 'queue/agent-ready'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
-          DONATION_WORKFLOW_MARKER: ${{ env.DONATION_WORKFLOW_MARKER }}
         run: |
-          BODY=$(gh issue view "$ISSUE_URL" --json body --jq '.body // ""')
-          if printf '%s\n' "$BODY" | grep -Fq "$DONATION_WORKFLOW_MARKER"; then
-            cat << 'EOF' > /tmp/comment.md
-          🐝 In the queue! Hive now has the instructions it needs for this donated agent request.
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────▶────────·────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Comment `/claim` to take this.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-          **Agent workflow:**
-          ```bash
-          just validate                    # check element graph
-          just build default               # build the image
-          just lint                        # bootc container lint
-          just boot-test                   # confirm desktop boots
-          ```
-          The issue body defines the flow: project report, issue review, or PR review. Post a sourced report comment when done, then close this issue.
-          EOF
-          else
-            cat << 'EOF' > /tmp/comment.md
-          🐟 In the queue! This issue has a spec and is ready to build.
+      - name: Post claimed pipeline
+        if: github.event.label.name == 'queue/claimed'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────✓────────▶────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Comment `/unclaim` to return to queue.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-          **Contributors:** comment `/claim` to take it, then:
-          ```bash
-          git checkout upstream/main -b fix/this-issue
-          # make your changes
-          just validate                    # check element graph
-          just build default               # build the image
-          just boot-test                   # automated smoke test (exits 0/1)
-          just lint                        # bootc container lint
-          ```
-          Open a PR with `Closes #NNN` when ready.
+  on-issue-closed:
+    if: github.event_name == 'issues' && github.event.action == 'closed'
+    needs: ensure-labels
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Post done pipeline
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────✓────────✓────────▶' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Closed. If you have this hardware confirm the fix shipped with: `ujust verify ISSUE_NUMBER`')
+          BODY=${BODY/ISSUE_NUMBER/$ISSUE_NUMBER}
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-          **Reviewers:** after the PR merges and ships in nightly:
-          ```bash
-          ujust verify <issue-number>      # confirm the fix on your machine
-          ```
-
-          Read [AGENTS.md](../../blob/main/AGENTS.md) for the full workflow.
-          EOF
-          fi
-          gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
-
-  # ── /claim, /unclaim, and /ready ──────────────────────────────────────────
   claim-handler:
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request == null &&
       (startsWith(github.event.comment.body, '/claim') ||
        startsWith(github.event.comment.body, '/unclaim') ||
-       startsWith(github.event.comment.body, '/ready'))
+       startsWith(github.event.comment.body, '/ready') ||
+       startsWith(github.event.comment.body, '/approve') ||
+       startsWith(github.event.comment.body, '/lgtm'))
     needs: ensure-labels
     runs-on: ubuntu-24.04
     steps:
-      - name: Resolve wrangler status
-        id: wrangler
+      - name: Resolve commenter permission
+        id: permission
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENTER: ${{ github.event.comment.user.login }}
-          WRANGLERS: ${{ env.WRANGLERS }}
+          REPO: ${{ github.repository }}
         run: |
-          IS_WRANGLER=false
-          for user in $(echo "$WRANGLERS" | tr ',' ' '); do
-            if [ "$COMMENTER" = "$user" ]; then
-              IS_WRANGLER=true
-              break
-            fi
-          done
-          echo "is_wrangler=$IS_WRANGLER" >> "$GITHUB_OUTPUT"
+          PERMISSION=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" \
+            --jq '.permission' 2>/dev/null || echo "none")
+          HAS_WRITE=false
+          case "$PERMISSION" in
+            admin|maintain|write) HAS_WRITE=true ;;
+          esac
+          echo "has_write=$HAS_WRITE" >> "$GITHUB_OUTPUT"
 
       - name: Handle /claim
         if: startsWith(github.event.comment.body, '/claim')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
+          REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
           COMMENTER: ${{ github.event.comment.user.login }}
         run: |
           LABELS=$(gh issue view "$ISSUE_URL" --json labels --jq '[.labels[].name] | join(",")')
-
-          # Already claimed
           if echo "$LABELS" | grep -q "queue/claimed"; then
             ASSIGNEE=$(gh issue view "$ISSUE_URL" --json assignees --jq '.assignees[0].login // "someone"')
-            cat << EOF > /tmp/comment.md
-          Already claimed by @${ASSIGNEE}. If they've gone quiet, a maintainer can \`/unclaim\` to return it to the queue.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+            gh issue comment "$ISSUE_URL" --body "Already claimed by @${ASSIGNEE}. If they've gone quiet, the assignee or a maintainer can \`/unclaim\` to return it to the queue."
             exit 0
           fi
-
-          # Not in queue
           if ! echo "$LABELS" | grep -q "queue/agent-ready"; then
-            cat << 'EOF' > /tmp/comment.md
-          This issue isn't in the agent queue yet — it needs `queue/agent-ready` before it can be claimed.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+            gh issue comment "$ISSUE_URL" --body "This issue isn't in the queue yet — it needs \`queue/agent-ready\` before it can be claimed."
             exit 0
           fi
 
           gh issue edit "$ISSUE_URL" --add-label "queue/claimed" --add-assignee "$COMMENTER"
-          if echo "$LABELS" | grep -q "kind:agent-donation"; then
-            cat << EOF > /tmp/comment.md
-          🎣 @${COMMENTER} has this one! Follow the workflow embedded in the issue, post a sourced report comment when you're done, and close this issue so Hive can move on.
-          EOF
-          else
-            cat << EOF > /tmp/comment.md
-          🎣 @${COMMENTER} has this one!
-
-          **Your workflow:**
-          \`\`\`bash
-          git checkout upstream/main -b fix/issue-${ISSUE_NUMBER}
-          # implement the acceptance criteria
-          just validate                    # fast graph check
-          just build default               # build the image (~1hr first time)
-          just boot-test                   # confirm desktop boots (exits 0/1)
-          just lint                        # bootc container lint
-          \`\`\`
-          Open a PR with \`Closes #${ISSUE_NUMBER}\` in the description when ready. Hit a blocker? Add \`agent/blocked\` and describe what you need.
-          EOF
-          fi
-          gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────✓────────▶────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Comment `/unclaim` to return to queue.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
       - name: Handle /ready
         if: startsWith(github.event.comment.body, '/ready')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
-          COMMENTER: ${{ github.event.comment.user.login }}
-          IS_WRANGLER: ${{ steps.wrangler.outputs.is_wrangler }}
           REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          HAS_WRITE: ${{ steps.permission.outputs.has_write }}
         run: |
-          PERMISSION=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" \
-            --jq '.permission' 2>/dev/null || echo "none")
-          HAS_WRITE=false
-          case "$PERMISSION" in admin|maintain|write) HAS_WRITE=true ;; esac
-
-          if [ "$IS_WRANGLER" != "true" ] && [ "$HAS_WRITE" = "false" ]; then
-            cat << 'EOF' > /tmp/comment.md
-          Only a wrangler or maintainer can move an issue into the queue with `/ready`.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+          if [ "$HAS_WRITE" != "true" ]; then
+            gh issue comment "$ISSUE_URL" --body "Only maintainers with write access can move an issue into the queue with \`/ready\`."
             exit 0
           fi
 
           LABELS=$(gh issue view "$ISSUE_URL" --json labels --jq '[.labels[].name] | join(",")')
-          BODY=$(gh issue view "$ISSUE_URL" --json body --jq '.body // ""')
-
+          ISSUE_BODY=$(gh issue view "$ISSUE_URL" --json body --jq '.body // ""')
           if ! echo "$LABELS" | grep -q "status/approved"; then
-            cat << 'EOF' > /tmp/comment.md
-          This issue needs `status/approved` before it can enter the queue.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+            gh issue comment "$ISSUE_URL" --body "This issue needs \`status/approved\` before it can enter the queue."
             exit 0
           fi
 
-          ACCEPTANCE_SECTION=$(
-            printf '%s\n' "$BODY" | awk '
-              /^###[[:space:]]/ {
-                if (in_section) exit
-                if ($0 ~ /^###[[:space:]]+.*Acceptance criteria[[:space:]]*$/) {
-                  in_section=1
-                  print
-                  next
-                }
+          ACCEPTANCE_SECTION=$(printf '%s\n' "$ISSUE_BODY" | awk '
+            /^###[[:space:]]/ {
+              if (in_section) exit
+              if ($0 ~ /^###[[:space:]]+.*Acceptance criteria[[:space:]]*$/) {
+                in_section=1
+                print
+                next
               }
-              in_section { print }
-            '
-          )
-
+            }
+            in_section { print }
+          ')
           if [ -z "$ACCEPTANCE_SECTION" ]; then
-            cat << 'EOF' > /tmp/comment.md
-          This issue needs a dedicated `### Acceptance criteria` section in the body before it can enter the queue.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+            gh issue comment "$ISSUE_URL" --body "This issue needs a dedicated \`### Acceptance criteria\` section in the body before it can enter the queue."
             exit 0
           fi
-
           if ! printf '%s\n' "$ACCEPTANCE_SECTION" | grep -Eq '^[[:space:]]*-[[:space:]]\[( |x|X)\][[:space:]]+'; then
-            cat << 'EOF' > /tmp/comment.md
-          This issue needs at least one real checklist item under `### Acceptance criteria` before it can enter the queue.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+            gh issue comment "$ISSUE_URL" --body "This issue needs at least one real checklist item under \`### Acceptance criteria\` before it can enter the queue."
             exit 0
           fi
-
           if echo "$LABELS" | grep -q "queue/agent-ready"; then
-            cat << 'EOF' > /tmp/comment.md
-          This issue is already in the queue and ready for a human or agent to `/claim`.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+            gh issue comment "$ISSUE_URL" --body "This issue is already in the queue and ready for someone to \`/claim\`."
             exit 0
           fi
 
           gh issue edit "$ISSUE_URL" --add-label "queue/agent-ready"
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────▶────────·────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Comment `/claim` to take this.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
+
+      - name: Handle /approve and /lgtm
+        if: >-
+          startsWith(github.event.comment.body, '/approve') ||
+          startsWith(github.event.comment.body, '/lgtm')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          HAS_WRITE: ${{ steps.permission.outputs.has_write }}
+        run: |
+          if [ "$HAS_WRITE" != "true" ]; then
+            gh issue comment "$ISSUE_URL" --body "Only maintainers with write access can approve with \`/approve\`."
+            exit 0
+          fi
+          gh issue edit "$ISSUE_URL" --add-label "lgtm"
+          gh issue comment "$ISSUE_URL" --body "lgtm — @${COMMENTER} approved. Ready to merge."
 
       - name: Handle /unclaim
         if: startsWith(github.event.comment.body, '/unclaim')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           COMMENTER: ${{ github.event.comment.user.login }}
-          REPO: ${{ github.repository }}
-          IS_WRANGLER: ${{ steps.wrangler.outputs.is_wrangler }}
+          HAS_WRITE: ${{ steps.permission.outputs.has_write }}
         run: |
           ASSIGNEE=$(gh issue view "$ISSUE_URL" --json assignees --jq '.assignees[0].login // ""')
-
-          # Allow assignee, wrangler, or repo collaborators with write+ to unclaim
-          PERMISSION=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" \
-            --jq '.permission' 2>/dev/null || echo "none")
-          HAS_WRITE=false
-          case "$PERMISSION" in admin|maintain|write) HAS_WRITE=true ;; esac
-
-          if [ "$COMMENTER" != "$ASSIGNEE" ] && [ "$HAS_WRITE" = "false" ] && [ "$IS_WRANGLER" != "true" ]; then
-            cat << EOF > /tmp/comment.md
-          Only @${ASSIGNEE}, a wrangler, or a maintainer can unclaim this issue.
-          EOF
-            gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+          if [ "$COMMENTER" != "$ASSIGNEE" ] && [ "$HAS_WRITE" != "true" ]; then
+            gh issue comment "$ISSUE_URL" --body "Only @${ASSIGNEE}, or a maintainer with write access, can unclaim this issue."
             exit 0
           fi
 
@@ -392,13 +385,20 @@ jobs:
           if [ -n "$ASSIGNEE" ]; then
             gh issue edit "$ISSUE_URL" --remove-assignee "$ASSIGNEE"
           fi
-          cat << 'EOF' > /tmp/comment.md
-          Back in the queue. Comment `/claim` to pick it up. Start with `just validate` to confirm the graph is sound.
-          EOF
-          gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
+          gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+          | while read -r cid; do
+              [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+            done
+          BODY=$(printf '%s\n' \
+            '<!-- actionadon-pipeline -->' \
+            '```text' \
+            '✓────────✓────────▶────────·────────·' \
+            'filed    approved queued   claimed  done' \
+            '```' \
+            'Comment `/claim` to take this.')
+          gh issue comment "$ISSUE_URL" --body "$BODY"
 
-  # ── Stale claim sweep ──────────────────────────────────────────────────────
-  # Daily: find claimed issues with no update in 7 days, return to queue.
   stale-claim-sweep:
     if: github.event_name == 'schedule'
     needs: ensure-labels
@@ -410,31 +410,27 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           CUTOFF=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ')
-
           gh issue list --repo "$REPO" \
             --label "queue/claimed" \
             --json number,url,updatedAt,assignees \
-            --jq ".[] | select(.updatedAt < \"$CUTOFF\") | .number" \
+            --jq ".[] | select(.updatedAt < \"${CUTOFF}\") | .number" \
           | while read -r NUMBER; do
-              ASSIGNEE=$(gh issue view "$NUMBER" --repo "$REPO" \
-                --json assignees --jq '.assignees[0].login // ""')
-
+              ASSIGNEE=$(gh issue view "$NUMBER" --repo "$REPO" --json assignees --jq '.assignees[0].login // ""')
               gh issue edit "$NUMBER" --repo "$REPO" --remove-label "queue/claimed"
               if [ -n "$ASSIGNEE" ]; then
                 gh issue edit "$NUMBER" --repo "$REPO" --remove-assignee "$ASSIGNEE"
-                cat << EOF > /tmp/comment.md
-          This issue has been claimed for 7 days with no PR activity, so it's back in the queue.
-
-          @${ASSIGNEE} — if you're still working on it, just \`/claim\` again and it's yours. Otherwise anyone can pick it up:
-          \`\`\`bash
-          git checkout upstream/main -b fix/issue-${NUMBER}
-          just validate && just build default && just boot-test && just lint
-          \`\`\`
-          EOF
-              else
-                cat << 'EOF' > /tmp/comment.md
-          This issue has been claimed for 7 days with no PR activity, so it's back in the queue. Comment `/claim` to take it.
-          EOF
               fi
-              gh issue comment "$NUMBER" --repo "$REPO" --body-file /tmp/comment.md
+              gh api "repos/${REPO}/issues/${NUMBER}/comments" --paginate \
+                --jq '.[] | select(.body | startswith("<!-- actionadon-pipeline -->")) | .id' \
+              | while read -r cid; do
+                  [ -n "$cid" ] && gh api "repos/${REPO}/issues/comments/${cid}" --method DELETE
+                done
+              BODY=$(printf '%s\n' \
+                '<!-- actionadon-pipeline -->' \
+                '```text' \
+                '✓────────✓────────▶────────·────────·' \
+                'filed    approved queued   claimed  done' \
+                '```' \
+                'Comment `/claim` to take this.')
+              gh issue comment "$NUMBER" --repo "$REPO" --body "$BODY"
             done
