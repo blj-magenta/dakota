@@ -14,7 +14,7 @@
 - [ ] Only junction `.bst` files changed — no `patches/` modifications in the same commit
 - [ ] All existing patches in the relevant `patches/` directory still apply cleanly
 
-> Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` passes.
+> Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` and `e2e` pass (or e2e is skipped for non-image paths).
 
 ## Patch additions or removals (`patches/`)
 

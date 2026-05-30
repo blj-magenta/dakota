@@ -29,17 +29,21 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 | File | Role |
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on merge_group/schedule/dispatch. Does NOT push to GHCR directly. |
-| `.github/workflows/publish.yml` | Pulls artifact from CAS, exports OCI, pushes to GHCR, signs, attests. Fires via `workflow_run` when build succeeds on main. |
+| `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish → e2e-gate → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, smoke-tests, then promotes to `:latest`. |
+| `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR when image-affecting paths change. |
 
 ## Trigger Behavior
 
 | Behavior | pull_request | merge_group | schedule | workflow_dispatch |
 |---|---|---|---|---|
 | `validate` job | Yes | No | No | No |
+| `e2e` job | Yes (path-filtered) | No | No | No |
 | `build` job | No | Yes | Yes | Yes |
 | Push to GHCR? | No | Via publish.yml | Via publish.yml | Via publish.yml |
 
-**PR path:** `validate` only — `bst show --deps all`, zero remote execution. ~15 min cached, ~30 min cold.
+**PR path:** `validate` + `e2e` (path-filtered) — zero remote execution. ~15 min cached, ~30 min cold.
+
+**e2e path filter:** `e2e` fires only when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change. Skipped otherwise — skipped counts as passing for the required status check.
 
 **Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge.
 
@@ -141,9 +145,11 @@ Ruleset: `main-review-required-with-renovate-bypass`
 | Rule | Value |
 |---|---|
 | Required reviews | 1 approving review |
-| Required status checks | `validate` only |
+| Required status checks | `validate` + `e2e` |
 | Merge queue | ALLGREEN, max_entries_to_build=1, check_response_timeout=120 min |
 | Bypass actors | OrganizationAdmin, Renovate, mergeraptor |
+
+**e2e path filter:** `e2e` only fires for PRs touching `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf`. For all other paths (e.g. workflow pin bumps) it is skipped, which satisfies the required check. Junction bumps in `elements/` always run e2e.
 
 **Critical:** Required status checks must only include checks that fire on `pull_request`. A check that only fires on `merge_group` will permanently block the "Add to merge queue" button.
 
