@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   e2e:
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@feat/e2e-reusable-workflow
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
     with:
       image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:latest' }}
       suites: ${{ github.event.inputs.suites || 'smoke' }}
