@@ -63,7 +63,7 @@ Defining  →  Active  →  [Blocked]  →  Complete
 **Goal:** The ghost lab runs fully automatically. `just boot-test` passes in CI without human intervention. `ujust devmode` reliably switches to the developer image.
 
 **Children:**
-- #524 Testlab automation should not require manual runner bring-up (P0)
+- #524 Lab automation should not require manual runner bring-up (P0)
 - #527 Ghost lab BST gate fails resolving gnome-build-meta junction
 - #180 ujust devmode can't find image (P1)
 

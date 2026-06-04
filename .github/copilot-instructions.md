@@ -2,7 +2,7 @@
 >
 > **In-repo skills (version-controlled, always current — load these first):**
 > - ujust recipes and gum patterns: `.github/skills/ujust-recipes.md`
-> - Testlab patterns (bootc switch, assertions): `docs/skills/testlab.md`
+> - Local/hardware OTA testing: `docs/skills/local-ota.md`
 > - Agent role policies (Hive): `files/hive/agent-policies/`
 > - Full skill index: `docs/skills/README.md`
 

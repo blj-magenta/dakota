@@ -20,9 +20,7 @@ Agent entry point. Load only the skill for your current task — do not load eve
 | Package a Rust project | `docs/skills/packaging-rust.md` |
 | Package a Zig project | `docs/skills/packaging-zig.md` |
 | Package a GNOME extension | `docs/skills/packaging-gnome-extensions.md` |
-| Test OTA updates locally (QEMU) | `docs/skills/local-ota.md` |
-| Test on physical hardware | `docs/skills/testlab.md` |
-| Set up hardware test lab | `docs/skills/testlab-setup.md` |
+| Test OTA updates locally or on hardware | `docs/skills/local-ota.md` |
 | Debug CI failures | `docs/skills/ci.md` |
 | Understand what dakota/Bluefin is | `docs/skills/overview.md` |
 | Write ujust recipes | `.github/skills/ujust-recipes.md` |

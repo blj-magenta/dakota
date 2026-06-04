@@ -25,9 +25,7 @@ every future agent and contributor — not just you, and not just on one machine
 | Rust/Cargo project packaging | [`packaging-rust.md`](packaging-rust.md) |
 | Zig project packaging | [`packaging-zig.md`](packaging-zig.md) |
 | GNOME Shell extension packaging | [`packaging-gnome-extensions.md`](packaging-gnome-extensions.md) |
-| Local OTA testing with QEMU | [`local-ota.md`](local-ota.md) |
-| Hardware testlab dev loop | [`testlab.md`](testlab.md) |
-| Hardware testlab one-time setup | [`testlab-setup.md`](testlab-setup.md) |
+| Local OTA testing (QEMU or physical hardware) | [`local-ota.md`](local-ota.md) |
 | CI pipeline, remote cache, GHCR | [`ci.md`](ci.md) |
 | Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* |
 | Clearing stuck merge queue | [`merge-queue.md`](merge-queue.md) |
