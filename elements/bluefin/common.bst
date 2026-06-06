@@ -72,4 +72,10 @@ config:
     # Create dconf profile so the distro system database is read
     mkdir -p "%{install-root}%{sysconfdir}/dconf/profile"
     printf 'user-db:user\nsystem-db:distro\n' > "%{install-root}%{sysconfdir}/dconf/profile/user"
+
+    # Dakota is a fresh BuildStream image — users never migrate from legacy-rechunk.
+    # Remove the rechunker-group-fix migration aid that common ships for Bluefin/LTS.
+    rm -f "%{install-root}%{prefix}/bin/rechunker-group-fix"
+    rm -f "%{install-root}%{prefix}/lib/systemd/system/rechunker-group-fix.service"
+    rm -f "%{install-root}%{prefix}/lib/systemd/system-preset/00-rechunker-group-fix.preset"
   - "%{install-extra}"
