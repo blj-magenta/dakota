@@ -102,5 +102,27 @@ Convention: always end `install-commands` with `%{install-extra}`.
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### Option names cannot contain hyphens (2026-06-07)
+
+BST option names only allow alphanumeric characters and underscores. A name like `my-option` silently fails or causes a parse error. Use `my_option` instead. This trips up agents that copy option names from CLI flags (which typically use hyphens).
+
+```yaml
+# ❌ wrong
+options:
+  my-arch:
+    type: arch
+
+# ✅ correct
+options:
+  my_arch:
+    type: arch
+```
+
+### `(>):` append syntax replaces the entire command list if used incorrectly (2026-06-07)
+
+The `(>):` syntax appends to the inherited command list from the element kind. If you write it as a key at the wrong indent level, BST silently ignores it and uses only your commands, dropping the kind's built-in build steps. Always verify the final command list with `just bst show --format '%{name}: %{build-commands}' bluefin/<name>.bst` before building.
+
+### `kind: stack` elements produce no filesystem output — they are dep aggregators only (2026-06-07)
+
+`deps.bst` is intentionally `kind: stack`. That means it has zero filesystem output. Only `kind: compose` and `kind: script` elements produce filesystem artifacts. If a new layer element is accidentally typed as `kind: stack`, it will build successfully but the image layer will be empty. Always verify with `grep '^kind:' elements/oci/layers/bluefin.bst`.
+

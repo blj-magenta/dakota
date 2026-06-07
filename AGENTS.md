@@ -25,7 +25,65 @@ testsuite gates `:testing` promotion nightly and `:latest`/`:stable` promotion w
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).
 
----## Data donation
+### 🚫 Absolute prohibition — ublue-os org
+
+**NEVER create issues, pull requests, comments, forks, webhook calls, API writes, automated reports, or any other programmatic action targeting any `ublue-os/*` repository.**
+
+This applies in every situation, without exception:
+- Issues, comments, PRs, forks → **BANNED**
+- Automated reports (bonedigger output, CI notifications, diagnostic uploads) → **BANNED**
+- `workflow_dispatch` or `repository_dispatch` calls to `ublue-os/*` → **BANNED**
+- Any `gh` CLI command that writes to `ublue-os/*` → **BANNED**
+
+If a task seems to require touching an upstream `ublue-os` repo → **stop and tell the human to report it manually.** Violating this risks getting the projectbluefin organization banned from GitHub.
+
+---
+
+## The Self-Improvement Loop
+
+> **This is the core operating model. Read it.**
+
+Every agent session produces two outputs:
+1. **The work** — the PR, fix, or improvement.
+2. **The learning** — what you discovered that a future agent should know.
+
+Output 1 without Output 2 leaves the system no smarter. **The loop only compounds if agents write back.**
+
+```
+Agent works on task
+  └─ discovers pattern / workaround / convention
+       └─ writes it to the relevant skill file in docs/skills/
+            └─ commits in the same PR
+                 └─ next agent starts smarter
+                      └─ loop
+```
+
+### Skill-improvement mandate
+
+**Before marking your work complete / before requesting final review:**
+
+- [ ] Did I discover any workaround, non-obvious pattern, or convention?
+- [ ] Is there a skill file for the area I worked in?
+- [ ] If yes — did I update it?
+- [ ] If no — did I create one?
+- [ ] Is the skill file committed in this same PR?
+
+### What counts as a learning worth writing back
+
+**Write it:**
+- A workaround for an upstream bug (include component + issue link)
+- A non-obvious pattern required for correctness
+- A convention that isn't obvious from the code
+- Something you had to discover by trial and error
+
+**Don't write it:**
+- One-off task notes ("use commit message X for this PR")
+- Obvious things any developer would know
+- Ephemeral state ("currently broken, fix pending")
+
+---
+
+## Data donation
 
 Dakota bugs are data donations. `ujust report` captures full system state to a user-owned gist before the issue opens. That report is the ground truth.
 
@@ -50,6 +108,28 @@ Non-compliance = automatic rejection.
 **Justfile integrity:** All maintenance tasks must be `just` recipes. No loose shell commands. If a task isn't covered by an existing recipe, add one alongside your change.
 
 **Human maintainability:** Every agent action must be replicable by a human via the Justfile. No AI-optimized black boxes. Do not rename existing recipes without explicit human approval.
+
+## Human Decision Points — Stop and Ask
+
+Agents implement autonomously **except** at these gates. Stop and request human input:
+
+| Gate | When |
+|---|---|
+| **Design Gate** | Architecture changes, new subsystem design, behavioral changes visible to users |
+| **Security Gate** | Auth, signing, supply chain, secrets handling, COPR/third-party sources |
+| **Breakage Gate** | Cross-repo breaking changes — removing/renaming inputs, changing defaults that affect consuming repos |
+| **Merge Gate** | Final PR approval and merge — always human |
+
+When in doubt, open a draft PR with your implementation and ask explicitly.
+
+## Verification — Implement and Verify; Humans Approve and Merge
+
+Do not request review without evidence. Before opening a PR for review:
+
+- Link to a CI run, workflow run, or test output that exercises your change
+- If no automated test exists, describe how you manually verified the change
+- Skill file update must be committed in the same PR (not a follow-up)
+
 ### Who does what
 
 | Audience | Entry point | Labels to look for |
@@ -127,3 +207,27 @@ When asked to review a pull request, load the branch workflow before giving feed
 5. **Correctness** — element syntax, layer kind (`compose` not `stack`), cargo sources generated not hand-written, etc.
 
 **Recommend the workflow.** If a contributor's PR doesn't follow the branch flow (e.g., branched from fork `main`, missing `Closes #NNN`, no checklist in PR body), guide them toward the correct pattern documented in `docs/workflow.md` rather than just rejecting.
+
+## Development Standards
+
+### Commit format (required)
+
+[Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <description>`
+
+Common types: `feat` `fix` `docs` `ci` `refactor` `chore` `build`
+
+### AI attribution (required)
+
+```
+feat(bluefin): add container build optimization
+
+Closes #NNN
+
+Assisted-by: Claude Sonnet 4.6 via GitHub Copilot
+```
+
+Per `docs/pr-checklist.md`: always `Assisted-by:` — **never `Co-authored-by:`** (this is a repo-local rule that differs from the org-wide template).
+
+### SHA pinning (actions only)
+
+All `uses:` references to external actions must be pinned to a full commit SHA with a version comment. Never use floating tags. `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.

@@ -118,5 +118,24 @@ sudo podman run --rm <image> find /usr/lib/systemd -name "<service>.service"
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### New package in deps.bst missing from image after a successful build (2026-06-07)
+
+This is always the BST weak-key caching bug. The package was built but the OCI layer was not rebuilt. Symptom: `just bst artifact list-contents bluefin/<name>.bst` shows files, but `just bst artifact list-contents oci/layers/bluefin.bst | grep <name>` returns nothing.
+
+Fix — force strict-mode rebuild:
+```bash
+just bst --no-cache-buildtrees build oci/bluefin.bst
+```
+
+This is the only reliable fix. Do not spend time debugging the element itself; the element is fine.
+
+### dconf update must run before ldconfig, ldconfig must run before build-oci (2026-06-07)
+
+The OCI assembly script in `elements/oci/bluefin.bst` must run steps in this exact order:
+1. Merge `/usr/etc` → `/etc`
+2. `dconf update` (compile keyfiles into GVariant databases)
+3. `ldconfig -r /layer` (rebuild library cache)
+4. `build-oci` (assemble image)
+
+Running `ldconfig` after `build-oci` has no effect. Running `build-oci` before `dconf update` produces an image with stale/missing dconf databases.
+

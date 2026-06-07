@@ -90,5 +90,22 @@ For `elements/gnome-build-meta.bst` or `elements/freedesktop-sdk.bst` ref update
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### Rust elements: cargo2 sources must be regenerated after every git ref bump (2026-06-07)
+
+After running `just bst source track bluefin/<name>.bst` for a Rust element, the `cargo2` source block in the element is now stale. The old crate versions were generated from the previous `Cargo.lock`. Forgetting to regenerate causes a build failure at the Cargo fetch step ("package not found in vendor directory").
+
+Always regenerate immediately after tracking:
+```bash
+just bst source track bluefin/<name>.bst
+# Then enter sandbox to get the new Cargo.lock:
+just bst shell --build bluefin/<name>.bst
+# Inside sandbox:
+cat Cargo.lock > /host/Cargo.lock  # extract Cargo.lock
+# Back on host:
+python3 files/scripts/generate_cargo_sources.py /host/Cargo.lock
+```
+
+### `just bst source track` only updates `ref:` — it does not regenerate derived sources (2026-06-07)
+
+`bst source track` updates the `ref:` field of `git_repo` and `tar` sources. It does NOT regenerate `cargo2`, `go_module`, or other derived source blocks. Those must be regenerated manually after tracking. Omitting this step is the most common cause of "build passes locally (from cache) but fails from scratch."
+

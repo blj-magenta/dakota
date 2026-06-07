@@ -131,5 +131,15 @@ Heavy build contributors:
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### zstd:chunked compression is incompatible with bootc composefs (2026-06-07)
+
+Attempting to push with `--compression-format=zstd:chunked` or via skopeo after chunkah rechunking fails with "unexpected EOF reading tar entry" at the composefs layer. After `chunkah build → podman load`, the only working push path is plain `podman push`. Do not reintroduce skopeo, oci-dir workarounds, or zstd:chunked flags for post-chunkah pushes. See projectbluefin/dakota#119 for the investigation.
+
+### Dakota is composefs at runtime — not OSTree (2026-06-07)
+
+The BST export includes `/sysroot/` artifacts (OSTree build tooling leftover). These are stripped via `--prune /sysroot/` at rechunking time. The booted system uses the composefs-oci backend — there is no ostree runtime on a running Dakota system. Never suggest `rpm-ostree`, `bootupd`, or `ostree admin` commands for a running Dakota system.
+
+### Hardware confirmation is required — CI green is not sufficient (2026-06-07)
+
+The validation gate is: `bootc upgrade` on test hardware succeeds + reboot + GDM active. CI passing confirms the image was built and passes `bootc container lint`. It does not confirm the image boots correctly on real hardware. Do not mark issues resolved without hardware evidence, and do not state something is "fixed" based on CI alone.
+

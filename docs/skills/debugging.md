@@ -109,5 +109,20 @@ pkg-config --list-all | grep <libname>
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### `Error loading project` before any build step = YAML error, not a build failure (2026-06-07)
+
+When BST exits with `Error loading project` before any `[build]` output appears, the element has a YAML/option error — it never even started building. Run `just bst show bluefin/<name>.bst` (no build) to pinpoint the exact line. Common causes: hyphenated option names, wrong option type, missing alias, bad indentation. Do not reach for `just bst shell` until `bst show` exits cleanly.
+
+### Delete the cached artifact before retrying a failed install step (2026-06-07)
+
+After fixing an `install-commands` error, BST may still report "cache hit" and skip the re-run. This is because the failed-build artifact is cached. Delete it before retrying:
+
+```bash
+just bst artifact delete bluefin/<name>.bst
+just bst build bluefin/<name>.bst
+```
+
+### Overlap conflicts block the final image build even when individual elements succeed (2026-06-07)
+
+When two elements install the same file path, `oci/bluefin.bst` fails with an overlap error even though each element builds fine individually. Fix by adding the conflicting path to `overlap-whitelist:` in `project.conf` or in the element's `public: bst:` section. Use `just bst show --format '%{name}: %{overlap-whitelist}' oci/bluefin.bst` to inspect current whitelist state.
+

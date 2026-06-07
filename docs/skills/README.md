@@ -6,8 +6,10 @@ should read the relevant file before starting in that area.
 If your first instinct is `dnf`, RPM/COPR, or a Containerfile package layer, you are in the wrong mental model. In this repo, historical `bluefin/` paths still contain Dakota's BuildStream elements; package changes happen there, not in Containerfile overlays.
 
 When you discover a new pattern or fix a recurring mistake, add it here in the
-same PR as your change. This is the feedback loop: lessons land here and help
+same PR as your change. This is the Self-Improvement Loop: lessons land here and help
 every future agent and contributor — not just you, and not just on one machine.
+
+Every agent session produces two outputs: **the work** (the PR) and **the learning** (the skill update). Output 1 without Output 2 leaves the system no smarter.
 
 ## Routing Table — load only what you need
 

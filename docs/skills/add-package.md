@@ -91,5 +91,46 @@ install-commands:
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### `strip-binaries: ""` is required for all non-ELF staging directories (2026-06-07)
+
+BST's default behavior calls `strip` on every binary in the staging area. If an element installs any file that is not a valid ELF binary (fonts, config files, shell scripts, pre-built tarballs, .so stubs), the build fails at the strip step with an obscure error. Always set `strip-binaries: ""` in the element's `variables:` block for:
+- Font elements (`.ttf`, `.otf`, `.woff2`)
+- Config-only elements (`kind: import`)
+- Pre-built binary elements where upstream provides already-stripped binaries
+- Any element where `file -b <binary>` returns something other than `ELF`
+
+```yaml
+variables:
+  strip-binaries: ""
+```
+
+### BST variables cannot be used in source URL fields (2026-06-07)
+
+Unlike install commands where `%{version}` expands correctly, BuildStream does NOT expand variables inside `sources[].url:` fields. Use `include/aliases.yml` to define a URL alias, then reference the alias:
+
+```yaml
+# ❌ WRONG — variable expansion does not work in source URLs
+sources:
+- kind: tar
+  url: https://github.com/owner/project/releases/v%{version}.tar.gz
+
+# ✅ CORRECT — use an alias
+sources:
+- kind: tar
+  url: alias:project-releases/v%{version}.tar.gz
+  # alias defined in include/aliases.yml as:
+  #   project-releases: https://github.com/owner/project/releases/
+```
+
+### Service preset files must use /usr/lib path, not /etc (2026-06-07)
+
+Dakota is a GNOME OS-model image. Service preset files installed at `/etc/systemd/system-preset/` are ignored at boot. Presets must be at the `%{indep-libdir}` path:
+
+```yaml
+# ✅ correct
+install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-name.preset"
+
+# ❌ wrong — ignored at boot
+install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/systemd/system-preset/80-name.preset"
+```
+
