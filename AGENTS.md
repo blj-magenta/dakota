@@ -81,6 +81,14 @@ Agent works on task
 - Obvious things any developer would know
 - Ephemeral state ("currently broken, fix pending")
 
+### Where learnings live
+
+| You are working in... | Write to |
+|---|---|
+| `projectbluefin/dakota` | That repo's `docs/skills/` — create if absent |
+| Cross-cutting (affects multiple repos) | Local first, then open propagation issue in `projectbluefin/actions` |
+| `ublue-os/*` repos | **NEVER write to these repos** — no issues, PRs, comments, forks, webhooks, or automated reports. Tell the human to report manually. |
+
 ---
 
 ## Data donation

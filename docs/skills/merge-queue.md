@@ -1,3 +1,8 @@
+---
+name: merge-queue
+description: Clears stuck dependency-update PRs, rebases chore branches against main, and handles fork PRs. Covers rebase loops, merge command, e2e retrigger, and cross-repository PR handling. Load when PRs are stuck, conflicting, or blocked.
+---
+
 # Merge Queue Operations
 
 ## When to Load

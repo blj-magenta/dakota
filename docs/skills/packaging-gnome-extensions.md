@@ -1,3 +1,8 @@
+---
+name: packaging-gnome-extensions
+description: Packages GNOME Shell extensions for BuildStream in dakota. Covers UUID discovery, install path, extension stack wiring, GSettings schema compilation, and dconf keyfile last-writer-wins behavior.
+---
+
 # Packaging GNOME Shell Extensions
 
 Load when packaging a GNOME Shell extension for BuildStream in dakota.

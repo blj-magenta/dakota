@@ -1,3 +1,8 @@
+---
+name: quickstart
+description: Zero-context entry point for routine dakota maintenance. Provides 5 always-rules, 6 never-rules, task routing table, and the end-to-end PR workflow. Load first for add/remove/update tasks when you have no other context.
+---
+
 # Agent Quickstart
 
 Zero-context entry point for routine dakota maintenance — add package, remove package, update refs.

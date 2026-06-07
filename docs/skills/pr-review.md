@@ -1,3 +1,8 @@
+---
+name: pr-review
+description: Consolidated review workflow for dakota pull requests. Covers review priorities, common rejection reasons, dep-update PR review, and ghost (agent-assisted PR) handling. Load when asked to review any PR in projectbluefin/dakota.
+---
+
 # PR Review
 
 Consolidated review workflow for dakota pull requests.

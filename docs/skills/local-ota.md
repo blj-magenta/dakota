@@ -1,3 +1,8 @@
+---
+name: local-ota
+description: Tests bootc upgrades via a local zot registry — QEMU VM or physical hardware. Covers registry setup, insecure registry configuration, and the build-push-upgrade loop. Load when validating image changes without pushing to GHCR.
+---
+
 # Local & Hardware OTA Testing
 
 Load when testing bootc upgrades via a local registry — QEMU VM or physical hardware.

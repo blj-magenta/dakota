@@ -1,3 +1,8 @@
+---
+name: oci-layers
+description: Explains how packages flow from BST elements into the final OCI image layer. Covers compose vs stack kinds, BST weak-key caching bug, and layer verification. Load when packages go missing from the built image or when modifying layer assembly.
+---
+
 # OCI Layers and Image Assembly
 
 Load when understanding how packages flow into the final OCI image, modifying layer assembly, or debugging why files appear or are missing from the built image.

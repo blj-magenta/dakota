@@ -1,3 +1,8 @@
+---
+name: ci
+description: Dakota CI pipeline reference. Covers workflow files, trigger behavior, remote cache architecture, common failures, and promotion flow. Load when debugging CI failures, understanding why a build was or wasn't triggered, or running a manual promotion.
+---
+
 # CI Pipeline Operations
 
 Load when debugging CI failures, understanding the build pipeline, or working with the remote CAS cache.
@@ -174,9 +179,6 @@ gh run list --repo projectbluefin/dakota --limit 5
 | `update-refs.md` | Understanding the source tracking workflow |
 
 ## Lessons Learned
-
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
 
 ### publish.yml startup_failure = :testing is stale (2026-06-04)
 

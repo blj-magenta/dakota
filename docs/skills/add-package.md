@@ -1,3 +1,8 @@
+---
+name: add-package
+description: End-to-end workflow for adding a new software package to the Dakota image. Covers element creation, deps.bst wiring, systemd service installation, and common mistakes. Load for any "add package to Dakota" task.
+---
+
 # Adding a Package
 
 Entry-point workflow for adding any software package to the Dakota image.

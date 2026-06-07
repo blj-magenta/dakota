@@ -1,3 +1,8 @@
+---
+name: remove-package
+description: Workflow for removing a software package from the Dakota image. Covers element deletion, deps.bst unwiring, dangling reference checks, and validation. Load for any "remove package from Dakota" task.
+---
+
 # Removing a Package
 
 Load when removing a software package from the Dakota image in `projectbluefin/dakota`.
@@ -54,5 +59,23 @@ just build
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### Grep all four locations before removing — elements/, workflows/, files/, Justfile (2026-06-07)
+
+A package can be referenced in up to four separate places beyond the element file itself:
+1. `elements/bluefin/deps.bst` (or gnome-shell-extensions.bst) — dependency stack entry
+2. `.github/workflows/track-bst-sources.yml` — tracking matrix entry
+3. `.github/renovate.json5` — Renovate config entry (if tracked there)
+4. `files/<name>/` — static assets directory
+
+Missing any of these causes a dangling reference. Always run:
+```bash
+grep -r "<name>" elements/ .github/workflows/ files/ patches/ Justfile include/
+```
+before opening the PR.
+
+### `just validate` may pass even with a dangling dep entry (2026-06-07)
+
+If you remove the element file but forget to remove it from `deps.bst`, `just validate`
+exits successfully (BST resolves deps lazily from the graph — missing elements are only
+caught at the `bst show --deps all` level). Always run `just bst show oci/bluefin.bst`
+(not just `just validate`) to catch missing element references before committing.

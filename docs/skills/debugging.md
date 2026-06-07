@@ -1,3 +1,8 @@
+---
+name: debugging
+description: Diagnoses BST element build failures, YAML errors, source fetch failures, compile failures, and image build failures. Load when a `just bst build` fails or when reading CI build logs.
+---
+
 # Debugging Build Failures
 
 Load when a BST element build fails, or when diagnosing element errors from CI logs.

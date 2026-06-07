@@ -1,3 +1,8 @@
+---
+name: packaging-rust
+description: Packages a Rust/Cargo project from source using BST cargo2 sources. Covers cargo2 generation, overlap-whitelist for conflicting binaries, and tracking group assignment. Use sudo-rs.bst as the reference template.
+---
+
 # Packaging Rust Projects
 
 Load when packaging a Rust project with Cargo for dakota/Bluefin BuildStream.
@@ -17,7 +22,7 @@ Rust elements use `kind: make` with a `cargo2` source block that vendors all cra
 There is no scaffold command. Copy an existing Rust element as a starting point:
 
 ```bash
-cp elements/bluefin/tailscale.bst elements/bluefin/<name>.bst
+cp elements/bluefin/sudo-rs.bst elements/bluefin/<name>.bst
 # Edit name, URL, version, binary name, and regenerate cargo2 sources
 ```
 
@@ -131,5 +136,41 @@ install-commands:
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### Wrong template: copy `tailscale.bst` (pre-built binary), not for Rust-from-source (2026-06-07)
+
+The "Scaffolding" section above said to copy `tailscale.bst` as a starting point for Rust
+elements. That's wrong — `tailscale.bst` is a pre-built binary element (`kind: manual` without
+cargo). The correct Rust-from-source template is `sudo-rs.bst`:
+
+```bash
+cp elements/bluefin/sudo-rs.bst elements/bluefin/<name>.bst
+```
+
+`sudo-rs.bst` uses `kind: make` + `cargo build --release` and has the correct `cargo2` source
+structure.
+
+### `overlap-whitelist` required when binary conflicts with another element (2026-06-07)
+
+`sudo-rs` replaces the system sudo, so it needs an explicit whitelist for the paths it shares
+with the upstream sudo element from fdsdk. Without it, the OCI image build fails with an
+overlap error:
+
+```yaml
+public:
+  bst:
+    overlap-whitelist:
+    - /usr/bin/sudo
+    - /usr/bin/sudoedit
+    - /usr/lib/debug/usr/bin/sudo.debug
+```
+
+Any Rust element replacing a binary that already exists in fdsdk or gnome-build-meta will need
+this. Use `just bst show --format '%{name}: %{overlap-whitelist}' oci/bluefin.bst` to audit.
+
+### `cargo build --release` alone (no `--locked --offline`) works because cargo2 provides deps (2026-06-07)
+
+The `cargo2` source block vendors all crates offline. BST's hermetic sandbox means no network
+access is possible, so `--offline` is redundant (it will succeed either way). `--locked` is
+still recommended as best practice but `sudo-rs.bst` omits it without issue. The build will
+still fail with a clear error if cargo2 sources are missing or mismatched — treat that as a
+signal to regenerate cargo2 sources, not a reason to add `--offline`.

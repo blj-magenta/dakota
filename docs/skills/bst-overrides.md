@@ -1,3 +1,8 @@
+---
+name: bst-overrides
+description: Governs when and how to create junction overrides in dakota. Upstream-first principle — local overrides are last resort. Covers patch_queue overrides, exit conditions, and how to evaluate whether an override is justified.
+---
+
 # BST Junction Overrides
 
 Load when creating, evaluating, or removing BuildStream junction element overrides in `projectbluefin/dakota`.
@@ -72,5 +77,40 @@ gh api repos/freedesktop-sdk/freedesktop-sdk/releases/latest | jq '.tag_name'
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### Alphabetical patch ordering matters — 0004 is higher priority than 0003 (2026-06-07)
+
+Patch files in `patches/<junction>/` apply in alphabetical (filename) order. Gaps in numbering
+are intentional — they leave room to insert patches between existing ones without renaming. Do
+not fill gaps just to make the sequence look clean:
+
+```
+patches/freedesktop-sdk/
+  0001-project-Specify-more-limits-to-the-CAS-configs.patch
+  0002-project.conf-Add-GNOME-CAS-servers.patch
+  0004-openssh-Use-etc-ssh-as-sysconfdir.patch   ← gap is intentional
+  0005-openssh-Include-ssh-_config.d-.conf.patch
+```
+
+When inserting a new patch between 0004 and 0005, name it `0004b-...` or `0004c-...` so the
+alphabetical order is preserved without renaming `0005+`.
+
+### `gnome-build-meta` currently has only one patch — it's not a typo (2026-06-07)
+
+`patches/gnome-build-meta/disable-lorry-mirrors.patch` is the only GBM patch. Dakota tracks
+the most recent GBM ref (latest nightly), which means most fixes are already upstream. The
+single-patch state is healthy — it means minimal maintenance debt.
+
+### Verify upstream before adding a patch (2026-06-07)
+
+Before adding a new patch to `patches/<junction>/`:
+```bash
+# Check if fdsdk already has the fix on their latest tag:
+gh api repos/freedesktop-sdk/freedesktop-sdk/releases/latest | jq '.tag_name'
+
+# Check if GBM gnome-50 already has the fix:
+git -C ~/.cache/buildstream/sources/git_repo/<gbm-mirror>.git \
+  log --oneline origin/gnome-50 | head -20
+```
+
+Adding a patch for something already upstream wastes maintenance cycles — junction bump is
+cheaper.

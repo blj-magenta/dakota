@@ -1,3 +1,8 @@
+---
+name: packaging-go
+description: Packages a Go project from source using BST go_module sources or a vendored GOPATH tarball. Note: all current Go tools in Dakota use pre-built binaries — load packaging-binaries.md first to confirm source build is truly needed.
+---
+
 # Packaging Go Projects
 
 Load when packaging a Go project for dakota/Bluefin BuildStream, or when setting up GOPATH vendoring in BuildStream.
@@ -131,5 +136,21 @@ install-commands:
 
 ## Lessons Learned
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### All current Go tools in Dakota are pre-built binaries — not Go-from-source builds (2026-06-07)
+
+As of June 2026, every Go-based tool in Dakota uses `kind: manual` with pre-built binaries
+from GitHub Releases. `glow.bst`, `gum.bst`, and `fzf.bst` are all pre-built binary elements,
+not Go source builds. See `packaging-binaries.md` for the pre-built pattern.
+
+Go-from-source build infrastructure (this skill) exists for future use when a required tool
+doesn't provide static binaries. Do not reach for this skill unless upstream truly has no
+release binaries — pre-built is simpler and faster to maintain.
+
+### Vendored GOPATH tarball requires a build host with Go to generate (2026-06-07)
+
+Pattern 2 (vendored GOPATH tarball) requires running `go mod vendor` on the host to create
+the tarball before the element can be written. Unlike cargo2 (where the generator script
+reads from the source), the Go vendor tarball must be generated offline and uploaded
+separately. Factor in this extra maintenance step when deciding between Pattern 1 and
+Pattern 2 — Pattern 1 (go_module sources) is more maintainable long-term because refs
+can be updated in-place.

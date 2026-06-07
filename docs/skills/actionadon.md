@@ -1,3 +1,8 @@
+---
+name: actionadon
+description: Dakota issue lifecycle — Actionadon pipeline stages, data donation contract, pipeline widget sentinel rules, and slash commands. Load when working on any GitHub issue, triaging bugs, or processing the contribution queue.
+---
+
 # Actionadon Lifecycle and Data Donation
 
 Load when working on any GitHub issue in this repo, triaging bugs, processing the queue, or touching `.github/workflows/actionadon.yml`.

@@ -1,3 +1,8 @@
+---
+name: buildstream-reference
+description: Reference for BuildStream 2 element syntax, variables, kinds, source kinds, and command hooks. Load when writing or reviewing .bst element files, not for end-to-end packaging workflows (use add-package.md for that).
+---
+
 # BuildStream Element Reference
 
 Load when writing, editing, or reviewing BuildStream `.bst` element files.

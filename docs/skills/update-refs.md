@@ -1,3 +1,8 @@
+---
+name: update-refs
+description: Workflow for updating an existing package version in dakota. Covers tarball ref tracking, git ref tracking, and cargo2 regeneration for Rust elements. Load for any "update package version" task.
+---
+
 # Updating Package Refs
 
 Load when updating an existing package's version in `projectbluefin/dakota`.

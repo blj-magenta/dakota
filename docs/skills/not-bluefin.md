@@ -1,3 +1,8 @@
+---
+name: not-bluefin
+description: Translates bluefin/RPM/dnf mental model to dakota BuildStream reality. Load FIRST on any dakota task if you have bluefin context, or if your plan mentions dnf, RPM, COPR, or Containerfile package layers.
+---
+
 # NOT Bluefin — Dakota Build Context
 
 **Load this skill FIRST before any dakota task.** Dakota is fundamentally different from bluefin.

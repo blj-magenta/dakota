@@ -1,3 +1,8 @@
+---
+name: dakota-overview
+description: Provides context on what Dakota is, how it differs from bluefin/bluefin-lts, current package gaps, and build optimization notes. Load when planning new package additions or when someone asks what Dakota is.
+---
+
 # Dakota Overview
 
 Load when you need context on what dakota is, how it differs from production Bluefin, what unique features it has, or when planning new package additions.

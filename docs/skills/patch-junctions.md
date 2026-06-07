@@ -1,3 +1,8 @@
+---
+name: patch-junctions
+description: Lifecycle for patches applied to upstream junctions (freedesktop-sdk, gnome-build-meta). Covers adding patches, required Upstream-Status headers, rebasing after junction bumps, and dropping upstreamed patches.
+---
+
 # Patching Junction Elements
 
 Load when modifying upstream freedesktop-sdk or gnome-build-meta elements in dakota, or when fixing bugs in junction dependencies.
