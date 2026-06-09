@@ -30,6 +30,10 @@ jobs:
       contents: write
       packages: read
       pull-requests: write
+    outputs:
+      changed: ${{ steps.branch.outputs.changed }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      testing_sha: ${{ steps.digests.outputs.dakota_digest }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -97,6 +101,7 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Open or update promotion PR
+        id: pr
         if: steps.branch.outputs.changed == 'true'
         env:
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
@@ -138,27 +143,39 @@ jobs:
               --title "$PR_TITLE" \
               --body "$PR_BODY"
             echo "Updated PR #${existing}"
+            PR_NUMBER="$existing"
           else
-            gh pr create \
+            PR_URL=$(gh pr create \
               --repo "${{ github.repository }}" \
               --head "$PROMOTION_BRANCH" \
               --base main \
               --title "$PR_TITLE" \
-              --body "$PR_BODY"
-            echo "Created new promotion PR"
+              --body "$PR_BODY")
+            PR_NUMBER="${PR_URL##*/}"
+            echo "Created new promotion PR #${PR_NUMBER}"
           fi
 
-          PR_NUMBER=$(gh pr list \
-            --repo "${{ github.repository }}" \
-            --head "$PROMOTION_BRANCH" \
-            --base main \
-            --state open \
-            --json number \
-            --jq '.[0].number // empty')
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
-          if [ -n "$PR_NUMBER" ]; then
-            gh workflow run pr-release-gate.yml \
-              --repo "${{ github.repository }}" \
-              -f pr_number="${PR_NUMBER}"
-            echo "Dispatched pr-release-gate.yml for PR #${PR_NUMBER}"
-          fi
+  gate:
+    name: Release gate checks
+    needs: [promote]
+    if: needs.promote.outputs.changed == 'true'
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      packages: read
+      pull-requests: write
+    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@main
+    with:
+      repo: ${{ github.repository }}
+      pr_number: ${{ needs.promote.outputs.pr_number }}
+      head_sha: ${{ needs.promote.outputs.testing_sha }}
+      registry: ghcr.io/projectbluefin
+      variants: >-
+        [{"image":"dakota"},{"image":"dakota-nvidia"}]
+      cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      target_tag: testing
+      run_e2e: false
+    secrets: inherit
