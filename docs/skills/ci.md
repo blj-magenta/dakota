@@ -1112,3 +1112,91 @@ skip_tags = ""
 ```
 
 **Added in PR #793, 2026-06-11.** Closes projectbluefin/common#609.
+
+### `gh pr merge --auto` does NOT honour `bypass_pull_request_allowances` (2026-06-12)
+
+`gh pr merge "$PR_URL" --auto --squash` enables GitHub's **auto-merge queue**.
+The queue evaluates branch-protection conditions using GitHub's internal process
+and does **not** honour `bypass_pull_request_allowances`. So a bot app in the
+bypass list that enables auto-merge still sees the PR sit open waiting for a
+human approval that will never arrive automatically.
+
+**Only direct merges (without `--auto`) use the bypass.**
+
+**Symptom:** all `auto-merge` group PRs from `track-bst-sources.yml` (common,
+distrobox, brew, shell extensions, etc.) were sitting open indefinitely despite
+`required_approving_count: 1` and the bot in `bypass_pull_request_allowances`.
+
+**Fix (PR #820):** remove `--auto` from the merge call. Since there are no
+required status checks, the direct merge completes immediately on PR creation.
+
+```bash
+# ✗ — queued auto-merge, bypass ignored
+gh pr merge "$PR_URL" --auto --squash
+
+# ✓ — direct merge, bypass honoured
+gh pr merge "$PR_URL" --squash
+```
+
+**Rule:** use `--auto` only when you want to wait for required CI checks to pass
+AND the merging actor has no bypass. For bypass actors merging bot-managed PRs
+with no required checks, drop `--auto`.
+
+### Caller-level `permissions:` must be a superset of all reusable workflow job permissions (2026-06-12)
+
+When a thin-caller workflow calls a reusable workflow via `uses:`, the
+**caller's top-level `permissions:` block caps what GITHUB_TOKEN can do** in
+every job inside the reusable. If the reusable's job needs `packages: read` or
+`actions: read` and the caller only declares `contents: write`, those scopes
+are silently restricted to `none` — producing `startup_failure with jobs: []`.
+
+**Symptom:** `promote-testing-to-main.yml` had `startup_failure` on every run
+after the thin-caller migration (PR #811). Missing `packages: read` (for GHCR
+digest lookups) and `actions: read` (for workflow-run status checks) were not
+in the caller's `permissions:` block.
+
+**Fix (PR #817):** declare every scope the reusable's jobs need at the
+caller's top level:
+
+```yaml
+permissions:
+  contents: write       # push squash promotion branch
+  pull-requests: write  # create / update / auto-merge the promotion PR
+  issues: write         # open / close failure-tracking issues
+  packages: read        # read image digests in release-gate checks
+  actions: read         # inspect workflow-run statuses in release-gate
+```
+
+**Rule when writing thin callers:** read the reusable workflow's job-level
+`permissions:` blocks and make the caller's top-level `permissions:` a strict
+superset of the union of all of them.
+
+### SHA-pinning a reusable that itself has nested SHA-pinned calls — inner SHA must still exist (2026-06-12)
+
+When you SHA-pin a reusable workflow (e.g.
+`projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@<sha>`),
+GitHub validates the **full call chain at startup** — including any
+`uses:` references inside the pinned reusable. If the pinned reusable
+internally calls another workflow at a now-deleted SHA, the calling workflow
+fails with:
+
+```
+failed to parse workflow: error parsing called workflow
+--> "projectbluefin/actions/.github/workflows/reusable-release-gate.yml@<dead-sha>"
+: failed to fetch workflow: workflow was not found.
+```
+
+This manifests as `startup_failure` on the **outer** caller — the error is not
+visible without running the workflow and reading the dispatch HTTP response.
+
+**Cause in this session:** the bluefin SHA for `reusable-promote-squash.yml`
+(`5f3cab`) internally called `reusable-release-gate.yml@5f8abb` which had been
+removed from the `actions` repo. The original dakota SHA (`6c2278`) internally
+calls `reusable-release-gate.yml@v1` (the managed tag), which remains valid.
+
+**Fix (PR #819):** revert to the SHA whose nested calls use `@v1` tags rather
+than pinned SHAs for inner dependencies.
+
+**Rule:** when picking a SHA to pin for a reusable workflow, verify that its
+own nested `uses:` references are either `@v1`/managed-tags or still-live
+SHAs. Prefer the version that uses managed tags internally — those age better.
