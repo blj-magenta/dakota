@@ -11,6 +11,8 @@ depends:
   - bluefin/brew.bst
   - bluefin/brew-tarball.bst
 
+  - bluefin/nix.bst
+
   - bluefin/tailscale.bst
   - bluefin/uupd.bst
 

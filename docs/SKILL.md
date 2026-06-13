@@ -29,6 +29,7 @@ If your first draft says "use dnf/RPM/COPR" or "edit the Containerfile to add a 
 | Write ujust recipes | `.github/skills/ujust-recipes.md` |
 | Work on the installer | `docs/skills/installer.md` |
 | Routine maintenance (add/remove/update) | `docs/skills/quickstart.md` |
+| Work on Nix integration (`/nix`, firstboot, daemon) | `docs/skills/nix.md` |
 
 ## Reference Docs
 

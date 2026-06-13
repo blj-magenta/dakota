@@ -1,7 +1,7 @@
-# Bluefin Dakota
+# Dakota Nix
 *Dakotaraptor steini*
 
-[Bluefin](https://projectbluefin.io) built on [GNOME OS](https://os.gnome.org/), assembled entirely from source.
+A fork of [Project Bluefin's Dakota](https://github.com/projectbluefin/dakota) — [Bluefin](https://projectbluefin.io) built on [GNOME OS](https://os.gnome.org/), assembled entirely from source — that ships a preinstalled multi-user [Nix](https://nixos.org/) package manager with a writable `/nix`. Everything else tracks upstream Dakota.
 
 <a href="https://docs.projectbluefin.io/changelogs">
   <picture>
@@ -88,6 +88,17 @@ sudo bootc switch ghcr.io/projectbluefin/dakota:next
 # or
 sudo bootc switch ghcr.io/projectbluefin/dakota:btw
 ```
+
+## Nix
+
+The image ships a multi-user [Nix](https://nixos.org/) install preconfigured and ready on boot. `/nix` lives on `/var` (writable, survives `bootc switch` and rollback), the daemon is socket-activated, and flakes are on by default. After the first boot completes:
+
+```bash
+nix --version
+nix run nixpkgs#hello
+```
+
+The store is materialized from a bundled tarball by a oneshot on first boot — no network required. See [`docs/skills/nix.md`](docs/skills/nix.md) for the wiring.
 
 ## ISO Download
 

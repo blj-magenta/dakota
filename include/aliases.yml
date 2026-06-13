@@ -42,6 +42,7 @@ aliases:
   libvirt: https://libvirt.org/sources/
   mozilla: https://ftp.mozilla.org/pub/
   netfilter_pub: https://www.netfilter.org/pub/
+  nix_releases: https://releases.nixos.org/nix/
   nvidia: https://us.download.nvidia.com/
   openldap: https://openldap.org/
   openvpn: https://swupdate.openvpn.org/community/releases/

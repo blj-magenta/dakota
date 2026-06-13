@@ -29,13 +29,17 @@ public:
       # be symlinks into /var, then recreate with the correct structure.
       # Relative symlinks (var/home not /var/home) match zirconium-hawaii and
       # are safer in chroot/deploy tooling flows.
-      - rm -rfv /home /root /opt /mnt /srv /var
+      - rm -rfv /home /root /opt /mnt /srv /var /nix
       - mkdir -p /var/home /var/roothome /var/opt /var/mnt /var/srv /var/tmp
       - ln -s var/home /home
       - ln -s var/roothome /root
       - ln -s var/opt /opt
       - ln -s var/mnt /mnt
       - ln -s var/srv /srv
+      # /nix → /var/nix gives Nix a writable store path on a bootc/ostree
+      # rootfs. The store contents are materialized into /var/nix by
+      # dakota-nix-firstboot.service on first boot. See bluefin/nix.bst.
+      - ln -s var/nix /nix
       - ln -s ../../var/usrlocal usr/local
 
       - touch /etc/machine-id
